@@ -1,0 +1,19 @@
+# secrets
+apiKeys.py
+
+# dataset and downloaded photos (too big for git)
+dataset/
+rejected/
+
+# environment and tooling
+.venv/
+__pycache__/
+.idea/
+.DS_Store
+
+# local backups
+_codeBackup*.zip
+
+# local tests
+test_photo_pipeline.py
+.pytest_cache/
