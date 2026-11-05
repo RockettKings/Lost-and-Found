@@ -2,3 +2,15 @@
 __pycache__/
 .env
 .pytest_cache/
+instance/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+.env.*
+!.env.example
+backups/
+.coverage
+htmlcov/
+.DS_Store
