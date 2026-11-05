@@ -2,9 +2,11 @@
 
 from datetime import datetime, timezone
 
+from flask_login import UserMixin
 from sqlalchemy.orm import validates
+from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.extensions import db
+from app.extensions import db, login_manager
 
 
 def utc_now():
@@ -12,7 +14,7 @@ def utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = "users"
     __table_args__ = (
         db.CheckConstraint("length(email) BETWEEN 3 AND 254", name="email_length"),
@@ -28,6 +30,19 @@ class User(db.Model):
     @validates("email")
     def normalize_email(self, _field, email):
         return email.strip().lower()
+
+    def set_password(self, password):
+        # Werkzeug's default is salted scrypt; only the hash is ever stored.
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    # Flask-Login stores only the user id in the signed session cookie.
+    return db.session.get(User, int(user_id)) if user_id.isdigit() else None
 
 
 class Item(db.Model):

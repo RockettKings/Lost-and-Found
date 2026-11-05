@@ -20,6 +20,8 @@ def app(tmp_path):
         "SECRET_KEY": "database-tests-only",
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.sqlite3'}",
         "S3_BUCKET": "test-bucket",
+        # Most tests post forms directly; test_auth.py checks CSRF with it enabled.
+        "WTF_CSRF_ENABLED": False,
     })
     with application.app_context():
         upgrade(directory=MIGRATIONS)

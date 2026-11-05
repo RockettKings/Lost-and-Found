@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "auth/_field.html" import field %}
+{% block title %}Sign up · Lost and Found{% endblock %}
+{% block content %}
+  <h1>Create an account</h1>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.email, autocomplete="email", required=true) }}
+    {{ field(form.password, autocomplete="new-password", minlength=10, maxlength=128, required=true) }}
+    {{ field(form.confirm, autocomplete="new-password", required=true) }}
+    <button type="submit">Sign up</button>
+  </form>
+  <p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+{% endblock %}

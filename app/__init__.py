@@ -1,13 +1,14 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.extensions import db, migrate
+from app.extensions import csrf, db, login_manager, migrate
 
 
 def create_app(test_config=None):
@@ -21,6 +22,15 @@ def create_app(test_config=None):
         S3_BUCKET=os.getenv("S3_BUCKET"),
         AWS_DEFAULT_REGION=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         DEBUG=False,
+        # Session cookie: unreadable by JavaScript, not sent on cross-site POSTs.
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=2),
+        SESSION_REFRESH_EACH_REQUEST=True,  # 2 hours of inactivity logs you out.
+        # "Keep me logged in" cookie.
+        REMEMBER_COOKIE_DURATION=timedelta(days=14),
+        REMEMBER_COOKIE_HTTPONLY=True,
+        REMEMBER_COOKIE_SAMESITE="Lax",
     )
     if test_config:
         app.config.update(test_config)
@@ -31,21 +41,30 @@ def create_app(test_config=None):
         if database.get_backend_name() == "sqlite":
             if not database.database or not Path(database.database).is_absolute():
                 raise ValueError("Production SQLite needs an absolute path on persistent storage.")
-        app.config.update(DEBUG=False, SESSION_COOKIE_SECURE=True)
+        app.config.update(DEBUG=False, SESSION_COOKIE_SECURE=True, REMEMBER_COOKIE_SECURE=True)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
+    login_manager.init_app(app)
+    csrf.init_app(app)
     # Import models before migrations inspect the metadata.
     from app import models
     migrate.init_app(app, db, render_as_batch=True)
 
+    from app.auth.routes import auth_bp
     from app.posts.routes import posts_bp
     from app.profiles.routes import profiles_bp
     from app.reports.routes import reports_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(posts_bp)
     app.register_blueprint(profiles_bp)
     app.register_blueprint(reports_bp)
+
+    @app.get("/")
+    def index():
+        # Placeholder home page until B's listing page replaces it.
+        return render_template("index.html")
 
     @app.get("/healthz")
     def health():
