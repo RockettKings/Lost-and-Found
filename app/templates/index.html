@@ -1,5 +1,53 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>Lost and Found</h1>
-  <p>Listings coming soon.</p>
+
+  <form class="card search" method="get" action="{{ url_for('index') }}">
+    <div class="field wide">
+      <label for="q">Keyword</label>
+      <input id="q" name="q" value="{{ q }}" placeholder="Title or description">
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <input id="category" name="category" value="{{ category }}">
+    </div>
+    <div class="field">
+      <label for="listing_type">Lost or found</label>
+      <select id="listing_type" name="listing_type">
+        <option value="">Either</option>
+        <option value="lost" {% if listing_type == "lost" %}selected{% endif %}>Lost</option>
+        <option value="found" {% if listing_type == "found" %}selected{% endif %}>Found</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sort">Sort</label>
+      <select id="sort" name="sort">
+        <option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest</option>
+        <option value="oldest" {% if sort == "oldest" %}selected{% endif %}>Oldest</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="button" type="submit">Search</button>
+      <a class="button secondary" href="{{ url_for('index') }}">Clear</a>
+    </div>
+  </form>
+
+  {% if items %}
+    <ul class="posts">
+      {% for item in items %}
+        <li class="card">
+          <a class="post-title" href="{{ url_for('items.detail', item_id=item.id) }}">{{ item.title }}</a>
+          <div class="tags">
+            <span class="tag {{ item.listing_type }}">{{ "Lost" if item.listing_type == "lost" else "Found" }}</span>
+            <span class="tag {{ 'resolved' if item.resolved else 'open' }}">{{ "Resolved" if item.resolved else "Open" }}</span>
+          </div>
+          <div class="meta">{{ item.category }} · {{ item.date_reported.isoformat() }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% elif filtering %}
+    <p class="empty">No matching posts.</p>
+  {% else %}
+    <p class="empty">No posts yet.</p>
+  {% endif %}
 {% endblock %}

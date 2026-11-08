@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · Lost and Found{% endblock %}
+{% block content %}
+  <article class="card">
+    <h1>{{ item.title }}</h1>
+    <div class="tags">
+      <span class="tag {{ item.listing_type }}">{{ "Lost" if item.listing_type == "lost" else "Found" }}</span>
+      <span class="tag {{ 'resolved' if item.resolved else 'open' }}">{{ "Resolved" if item.resolved else "Open" }}</span>
+    </div>
+
+    <dl class="details">
+      <dt>Category</dt>
+      <dd>{{ item.category }}</dd>
+      <dt>Date reported</dt>
+      <dd>{{ item.date_reported.isoformat() }}</dd>
+      <dt>Location</dt>
+      <dd>{{ item.general_location }}</dd>
+    </dl>
+
+    <p class="description">{{ item.description }}</p>
+    {% if photo_src %}
+      <img src="{{ photo_src }}" alt="Photo of {{ item.title }}">
+    {% endif %}
+
+    {% if owner %}
+      <div class="actions">
+        <a class="button secondary" href="{{ url_for('items.edit_item', item_id=item.id) }}">Edit</a>
+        {% if not item.resolved %}
+          <form method="post" action="{{ url_for('items.resolve_item', item_id=item.id) }}">
+            {{ action_form.hidden_tag() }}
+            <button class="button" type="submit">Mark resolved</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('items.delete_item', item_id=item.id) }}">
+          {{ action_form.hidden_tag() }}
+          <button class="button danger" type="submit">Delete post</button>
+        </form>
+      </div>
+    {% endif %}
+  </article>
+{% endblock %}

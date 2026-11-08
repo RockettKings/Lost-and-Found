@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not allowed · Lost and Found{% endblock %}
+{% block content %}
+  <div class="card narrow">
+    <h1>Not allowed</h1>
+    <p>You cannot change this post.</p>
+    <a class="button secondary" href="{{ url_for('index') }}">Back to home</a>
+  </div>
+{% endblock %}

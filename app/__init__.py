@@ -3,7 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -52,19 +52,29 @@ def create_app(test_config=None):
     migrate.init_app(app, db, render_as_batch=True)
 
     from app.auth.routes import auth_bp
+    from app.items.browse import browse_context
+    from app.items.routes import items_bp
     from app.posts.routes import posts_bp
     from app.profiles.routes import profiles_bp
     from app.reports.routes import reports_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(items_bp)
     app.register_blueprint(posts_bp)
     app.register_blueprint(profiles_bp)
     app.register_blueprint(reports_bp)
 
     @app.get("/")
     def index():
-        # Placeholder home page until B's listing page replaces it.
-        return render_template("index.html")
+        return render_template("index.html", **browse_context(request.args))
+
+    @app.errorhandler(404)
+    def page_not_found(_error):
+        return render_template("404.html"), 404
+
+    @app.errorhandler(403)
+    def forbidden(_error):
+        return render_template("403.html"), 403
 
     @app.get("/healthz")
     def health():

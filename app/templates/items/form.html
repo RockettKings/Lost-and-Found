@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "auth/_field.html" import field %}
+{% block title %}{{ heading }} · Lost and Found{% endblock %}
+{% block content %}
+  <form class="card narrow" method="post" enctype="multipart/form-data" novalidate>
+    <h1>{{ heading }}</h1>
+    {{ form.hidden_tag() }}
+    {{ field(form.title, required=true) }}
+    {{ field(form.description, required=true) }}
+    {{ field(form.category, required=true) }}
+    {{ field(form.listing_type, required=true) }}
+    {{ field(form.general_location, required=true) }}
+    {{ field(form.date_reported, required=true) }}
+    {{ field(form.photo, accept="image/*") }}
+    <button class="button" type="submit">{{ submit_label }}</button>
+  </form>
+{% endblock %}
