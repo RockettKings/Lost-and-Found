@@ -7,4 +7,5 @@
 | Jaycob Campos | Project Manager | Sprint 1 planning | 1.5 |
 | Jaycob Campos | ML Lead / ML Engineer | 5a, 5b, 6, 25 | 4.5 |
 | Jonathan Kazmaier | Frontend | 1, 7, 8, 9, 15, 16, 17, 19, 20, 41 | 2.0 |
-| **Total** | | | **8.0** |
+| Lydia Peng | QA Lead / Messaging & Notifications Dev | 40, 40a, 40b, 40c | 2.0 |
+| **Total** | | | **10.0** |
