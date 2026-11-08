@@ -1,0 +1,23 @@
+# Optional deployment target. This configuration requires paid compute + disk.
+# Create a Blueprint manually; nothing is provisioned by committing this file.
+services:
+  - type: web
+    name: lost-and-found
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # Disks are available at runtime, not during build/pre-deploy commands.
+    startCommand: flask --app run db upgrade && gunicorn run:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --access-logfile - --error-logfile -
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    disk:
+      name: lost-found-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////var/data/lost_found.sqlite3
