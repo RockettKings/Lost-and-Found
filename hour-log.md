@@ -11,4 +11,4 @@
 | Khang Phan | Backend Lead / Posts Dev | 1, 7, 9, 15, 17, 20, 41, 42 | 4.0 |
 | Andrew Kruckemyer | Database | 2, 23, 38, 4, 31 | 2.0 |
 | Nick Heyer | Security | 8, 16, 22, 23 | 3.0 |
-| **Total** | | | **16.0** |
+| **Total** | | | **19.0** |
