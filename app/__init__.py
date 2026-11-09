@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from flask_wtf.csrf import CSRFError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,19 +22,19 @@ def create_app(test_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         S3_BUCKET=os.getenv("S3_BUCKET"),
         AWS_DEFAULT_REGION=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+        MAX_CONTENT_LENGTH=11 * 1024 * 1024,
         DEBUG=False,
-        # Session cookie: unreadable by JavaScript, not sent on cross-site POSTs.
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=2),
-        SESSION_REFRESH_EACH_REQUEST=True,  # 2 hours of inactivity logs you out.
-        # "Keep me logged in" cookie.
+        SESSION_REFRESH_EACH_REQUEST=True,
         REMEMBER_COOKIE_DURATION=timedelta(days=14),
         REMEMBER_COOKIE_HTTPONLY=True,
         REMEMBER_COOKIE_SAMESITE="Lax",
     )
     if test_config:
         app.config.update(test_config)
+
     if app.config["APP_ENV"] == "production":
         if not app.config["SECRET_KEY"] or len(app.config["SECRET_KEY"]) < 32:
             raise ValueError("Production requires a generated SECRET_KEY of at least 32 characters.")
@@ -42,45 +43,56 @@ def create_app(test_config=None):
             if not database.database or not Path(database.database).is_absolute():
                 raise ValueError("Production SQLite needs an absolute path on persistent storage.")
         app.config.update(DEBUG=False, SESSION_COOKIE_SECURE=True, REMEMBER_COOKIE_SECURE=True)
+
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     login_manager.init_app(app)
     csrf.init_app(app)
+
     # Import models before migrations inspect the metadata.
-    from app import models
+    from app import models  # noqa: F401
     migrate.init_app(app, db, render_as_batch=True)
 
     from app.auth.routes import auth_bp
-    from app.items.browse import browse_context
-    from app.items.routes import items_bp
+    from app.pages.routes import pages_bp
     from app.posts.routes import posts_bp
     from app.profiles.routes import profiles_bp
     from app.reports.routes import reports_bp
 
     app.register_blueprint(auth_bp)
-    app.register_blueprint(items_bp)
+    app.register_blueprint(pages_bp)
     app.register_blueprint(posts_bp)
     app.register_blueprint(profiles_bp)
     app.register_blueprint(reports_bp)
 
     @app.get("/")
     def index():
-        return render_template("index.html", **browse_context(request.args))
+        # The browser loads post data from GET /posts/ using JavaScript.
+        return render_template("index.html")
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(error):
+        if request.path.startswith("/posts"):
+            return jsonify(error="CSRF validation failed. Refresh the page and try again."), 400
+        return render_template("403.html"), 400
 
     @app.errorhandler(404)
     def page_not_found(_error):
+        if request.path.startswith("/posts"):
+            return jsonify(error="Post or endpoint not found."), 404
         return render_template("404.html"), 404
 
     @app.errorhandler(403)
     def forbidden(_error):
+        if request.path.startswith("/posts"):
+            return jsonify(error="You are not allowed to perform this action."), 403
         return render_template("403.html"), 403
 
     @app.get("/healthz")
     def health():
         """Deployment readiness check; exposes no users, posts, or credentials."""
         try:
-            # Unlike SELECT 1, this also verifies the initial migration was applied.
             db.session.execute(text("SELECT id FROM users LIMIT 1"))
         except SQLAlchemyError:
             db.session.rollback()
