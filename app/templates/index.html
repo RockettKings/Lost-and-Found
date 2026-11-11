@@ -1,5 +1,38 @@
 {% extends "base.html" %}
+{% block title %}Lost and Found{% endblock %}
 {% block content %}
   <h1>Lost and Found</h1>
-  <p>Listings coming soon.</p>
+
+  <form class="card search" id="post-search-form">
+    <div class="field wide">
+      <label for="q">Keyword</label>
+      <input id="q" name="q" placeholder="Title or description">
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <input id="category" name="category">
+    </div>
+    <div class="field">
+      <label for="listing_type">Lost or found</label>
+      <select id="listing_type" name="listing_type">
+        <option value="">Either</option>
+        <option value="lost">Lost</option>
+        <option value="found">Found</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sort">Sort</label>
+      <select id="sort" name="sort">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="button" type="submit">Search</button>
+      <button class="button secondary" type="reset" id="clear-search">Clear</button>
+    </div>
+  </form>
+
+  <p id="post-list-status" class="status-message" role="status" aria-live="polite"></p>
+  <ul class="posts" id="post-list"></ul>
 {% endblock %}

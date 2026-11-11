@@ -2,13 +2,13 @@
 {% from "auth/_field.html" import field %}
 {% block title %}Sign up · Lost and Found{% endblock %}
 {% block content %}
-  <h1>Create an account</h1>
-  <form method="post" novalidate>
+  <form class="card narrow" method="post" novalidate>
+    <h1>Create an account</h1>
     {{ form.hidden_tag() }}
     {{ field(form.email, autocomplete="email", required=true) }}
     {{ field(form.password, autocomplete="new-password", minlength=10, maxlength=128, required=true) }}
     {{ field(form.confirm, autocomplete="new-password", required=true) }}
-    <button type="submit">Sign up</button>
+    <button class="button" type="submit">Sign up</button>
+    <p class="muted">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
   </form>
-  <p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
 {% endblock %}

@@ -66,5 +66,6 @@ class Item(db.Model):
     general_location = db.Column(db.String(200), nullable=False)
     date_reported = db.Column(db.Date, default=lambda: utc_now().date(), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    resolved = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("0"))
     photo_key = db.Column(db.String(255))  # S3 object key, not the image or an expiring URL
     user = db.relationship("User", back_populates="items")

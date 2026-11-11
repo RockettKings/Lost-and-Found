@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ "New post" if mode == "create" else "Edit post" }} · Lost and Found{% endblock %}
+{% block content %}
+  <form
+    class="card narrow"
+    id="post-form"
+    data-mode="{{ mode }}"
+    {% if post_id %}data-post-id="{{ post_id }}"{% endif %}
+    novalidate
+  >
+    <h1>{{ "New post" if mode == "create" else "Edit post" }}</h1>
+
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" maxlength="120" required>
+      <small class="field-error" data-error-for="title"></small>
+    </div>
+
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" maxlength="2000" required></textarea>
+      <small class="field-error" data-error-for="description"></small>
+    </div>
+
+    <div class="field">
+      <label for="category">Category</label>
+      <input id="category" name="category" maxlength="80" required>
+      <small class="field-error" data-error-for="category"></small>
+    </div>
+
+    <div class="field">
+      <label for="listing_type">Lost or found</label>
+      <select id="listing_type" name="listing_type" required>
+        <option value="lost">Lost</option>
+        <option value="found">Found</option>
+      </select>
+      <small class="field-error" data-error-for="listing_type"></small>
+    </div>
+
+    <div class="field">
+      <label for="general_location">Location</label>
+      <input id="general_location" name="general_location" maxlength="200" required>
+      <small class="field-error" data-error-for="general_location"></small>
+    </div>
+
+    <div class="field">
+      <label for="date_reported">Date reported</label>
+      <input id="date_reported" name="date_reported" type="date" required>
+      <small class="field-error" data-error-for="date_reported"></small>
+    </div>
+
+    <div class="field">
+      <label for="photo">Photo (optional)</label>
+      <input id="photo" name="photo" type="file" accept="image/*">
+      <small class="field-error" data-error-for="photo"></small>
+      <div id="current-photo-area"></div>
+      <label class="checkbox" id="remove-photo-label" hidden>
+        <input id="remove_photo" name="remove_photo" type="checkbox">
+        Remove current photo
+      </label>
+    </div>
+
+    <p id="post-form-status" class="status-message" role="status" aria-live="polite"></p>
+    <div class="actions">
+      <button class="button" type="submit">{{ "Create post" if mode == "create" else "Save changes" }}</button>
+      <a class="button secondary" href="{{ url_for('index') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

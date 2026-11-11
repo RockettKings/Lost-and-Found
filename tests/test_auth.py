@@ -38,7 +38,9 @@ def test_register_stores_hash_not_password(client, app):
 
 def test_register_logs_user_in(client):
     register(client)
-    assert b"Logged in as student@example.edu" in client.get("/").data
+    home = client.get("/").data
+    assert b">Account</span>" in home
+    assert b"student@example.edu" not in home
 
 
 @pytest.mark.parametrize("email,password,confirm,message", [
@@ -72,16 +74,16 @@ def test_login_and_logout(client):
 
     response = login(client)
     assert response.status_code == 302
-    assert b"Logged in as" in client.get("/").data
+    assert b">Account</span>" in client.get("/").data
 
     client.post("/auth/logout")
-    assert b"Logged in as" not in client.get("/").data
+    assert b">Account</span>" not in client.get("/").data
 
 
 def test_logout_requires_post(client):
     register(client)
     assert client.get("/auth/logout").status_code == 405
-    assert b"Logged in as" in client.get("/").data
+    assert b">Account</span>" in client.get("/").data
 
 
 def test_wrong_email_and_wrong_password_look_identical(client):
@@ -92,7 +94,7 @@ def test_wrong_email_and_wrong_password_look_identical(client):
     assert wrong_password.status_code == wrong_email.status_code == 200
     assert b"Invalid email or password." in wrong_password.data
     assert b"Invalid email or password." in wrong_email.data
-    assert b"Logged in as" not in client.get("/").data
+    assert b">Account</span>" not in client.get("/").data
 
 
 @pytest.mark.parametrize("next_url,expected", [
@@ -140,3 +142,13 @@ def test_csrf_is_enforced(tmp_path):
         assert db.session.execute(db.select(User)).scalar_one().email == "student@example.edu"
         db.session.remove()
         db.engine.dispose()
+
+
+def test_unknown_url_uses_shared_layout(client):
+    response = client.get("/this-page-does-not-exist")
+    assert response.status_code == 404
+    page = response.data
+    assert b"Page not found" in page
+    assert b'href="/"' in page
+    assert b"Log in" in page
+    assert b"Sign up" in page

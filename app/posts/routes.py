@@ -1,237 +1,321 @@
-from flask import Blueprint, jsonify, request, current_app
+from datetime import date
+
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
+from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Item
+from app.storage import photo_url
 
-# Create posts Blueprint
-posts_bp = Blueprint('posts', __name__, url_prefix='/posts')
+posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
-# Define routes
+TEXT_LIMITS = {
+    "title": 120,
+    "description": 2000,
+    "category": 80,
+    "listing_type": 5,
+    "general_location": 200,
+}
+CREATE_REQUIRED = set(TEXT_LIMITS)
+ALLOWED_UPDATE_FIELDS = CREATE_REQUIRED | {"date_reported", "resolved"}
+
+
+def _discard_photo(photo_key):
+    if not photo_key:
+        return
+    try:
+        remove_stored_photo(photo_key)
+    except Exception:
+        # A failed S3 cleanup should not undo a committed database operation.
+        current_app.logger.exception("Could not delete an obsolete post photo.")
+
+
+def _photo_url(item):
+    if not item.photo_key:
+        return None
+    try:
+        return photo_url(item.photo_key)
+    except Exception:
+        current_app.logger.exception("Could not generate a post photo URL.")
+        return None
+
+
 def _item_to_dict(item):
-    """Converts Item attributes to a dictionary for JSON"""
+    """Serialize a post without exposing private user information."""
     return {
-        'id': item.id,
-        'title': item.title,
-        'description': item.description,
-        'category': item.category,
-        'listing_type': item.listing_type,
-        'general_location': item.general_location,
-        'date_reported': item.date_reported.isoformat(),
-        'created_at': item.created_at.isoformat() + "Z"
+        "id": item.id,
+        "title": item.title,
+        "description": item.description,
+        "category": item.category,
+        "listing_type": item.listing_type,
+        "general_location": item.general_location,
+        "date_reported": item.date_reported.isoformat(),
+        "created_at": item.created_at.isoformat() + "Z",
+        "resolved": bool(item.resolved),
+        "photo_url": _photo_url(item),
+        "is_owner": bool(current_user.is_authenticated and item.user_id == current_user.id),
     }
 
-def _validate_item_data(data, partial=False):
-    """Validate and clean the fields submitted when adding/updating a post"""
 
-    # if data is not a dictionary, it cannot be a JSON object
+def _parse_bool(value, field):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise ValueError(f"{field} must be true or false.")
+
+
+def _request_data():
+    """Read either a JSON object or multipart/form-data fields."""
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return None, {"body": "Request must be a JSON object."}
+        return data, {}
+
+    if request.mimetype == "multipart/form-data" or request.mimetype == "application/x-www-form-urlencoded":
+        return request.form.to_dict(), {}
+
+    return None, {"body": "Use application/json or multipart/form-data."}
+
+
+def _validate_item_data(data, partial=False, allow_empty=False):
     if not isinstance(data, dict):
-        return None, {'body': "Request must be a JSON object."}
-
-    # character limits for the given fields
-    field_limits = {
-        'title': 120,
-        'description': 2000,
-        'category': 80,
-        'listing_type': 5,
-        'general_location': 200
-    }
+        return {}, {"body": "Request must contain valid post fields."}
 
     errors = {}
-    cleaned_data = {}
+    cleaned = {}
 
-    unexpected = set(data) - set(field_limits)
+    allowed = ALLOWED_UPDATE_FIELDS if partial else CREATE_REQUIRED | {"date_reported"}
+    unexpected = set(data) - allowed
     if unexpected:
-        errors['body'] = f"Unexpected fields: {', '.join(sorted(unexpected))}"
+        errors["body"] = f"Unexpected fields: {', '.join(sorted(unexpected))}"
 
-    # If updating, check that the data contains at least one field
-    if partial and not data:
-        errors['body'] = "At least one field must be provided."
+    if not partial:
+        missing = (CREATE_REQUIRED | {"date_reported"}) - set(data)
+        for field in missing:
+            errors[field] = "This field is required."
 
-    # For each field defined in field_limits, validate/clean in the data
-    for field, max_length in field_limits.items():
-        # Check that the field exists in the data
+    if partial and not data and not allow_empty:
+        errors["body"] = "At least one field or photo operation must be provided."
+
+    for field, max_length in TEXT_LIMITS.items():
         if field not in data:
-            # If adding, all fields are required
-            if not partial:
-                errors[field] = "This field is required."
-
             continue
-
         value = data[field]
-
-        # Check that all values are string type
         if not isinstance(value, str):
             errors[field] = "This field must be a string."
             continue
-
         value = value.strip()
-
-        # Check values for errors
         if not value:
             errors[field] = "This field cannot be empty."
         elif len(value) > max_length:
-            errors[field] = f'this field cannot exceed {max_length} characters.'
+            errors[field] = f"This field cannot exceed {max_length} characters."
         else:
-            cleaned_data[field] = value
+            cleaned[field] = value
 
-    # check for valid listing type
-    if 'listing_type' in cleaned_data:
-        cleaned_data['listing_type'] = cleaned_data["listing_type"].lower()
+    if "listing_type" in cleaned:
+        cleaned["listing_type"] = cleaned["listing_type"].lower()
+        if cleaned["listing_type"] not in {"lost", "found"}:
+            errors["listing_type"] = "Must be either 'lost' or 'found'."
+            cleaned.pop("listing_type", None)
 
-        if cleaned_data['listing_type'] not in ('lost', 'found'):
-            errors['listing_type'] = "Must be either 'lost' or 'found'."
-            cleaned_data.pop('listing_type')
+    if "date_reported" in data:
+        raw_date = data["date_reported"]
+        if not isinstance(raw_date, str):
+            errors["date_reported"] = "Date reported must use YYYY-MM-DD."
+        else:
+            try:
+                cleaned["date_reported"] = date.fromisoformat(raw_date.strip())
+            except ValueError:
+                errors["date_reported"] = "Date reported must use YYYY-MM-DD."
 
-    return cleaned_data, errors
+    if "resolved" in data:
+        try:
+            cleaned["resolved"] = _parse_bool(data["resolved"], "resolved")
+        except ValueError as error:
+            errors["resolved"] = str(error)
 
-@posts_bp.route('/<int:post_id>', methods=['GET'])
-def get_post(post_id):
-    """Retrieve a post by its ID from the database"""
+    return cleaned, errors
+
+
+def _commit():
+    try:
+        db.session.commit()
+        return True
+    except IntegrityError:
+        db.session.rollback()
+        current_app.logger.exception("Post database integrity error.")
+        return False
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Post database error.")
+        return False
+
+
+def _require_login():
+    if not current_user.is_authenticated:
+        return jsonify(error="Authentication required."), 401
+    return None
+
+
+def _owned_post(post_id):
     item = db.session.get(Item, post_id)
-
-    # Post not found in the database
     if item is None:
-        return jsonify(error="Post not found."), 404
+        return None, (jsonify(error="Post not found."), 404)
+    if item.user_id != current_user.id:
+        return None, (jsonify(error="You do not own this post."), 403)
+    return item, None
 
-    return jsonify(_item_to_dict(item)), 200
 
-@posts_bp.route('/', methods=['GET'])
+@posts_bp.get("/")
 def get_posts():
-    """Retrieve all posts, optionally filtered by category or listing type"""
-
+    """List posts. Supports q, category, listing_type, and sort query parameters."""
     statement = db.select(Item)
 
-    # Optionally, if a category filter is applied, retrieve only posts matching that category
-    category = request.args.get('category', '').strip()
+    query = (request.args.get("q") or "").strip()
+    category = (request.args.get("category") or "").strip()
+    listing_type = (request.args.get("listing_type") or "").strip().lower()
+    sort = (request.args.get("sort") or "newest").strip().lower()
+
+    if listing_type and listing_type not in {"lost", "found"}:
+        return jsonify(error="listing_type must be 'lost' or 'found'."), 400
+    if sort not in {"newest", "oldest"}:
+        return jsonify(error="sort must be 'newest' or 'oldest'."), 400
+
+    if query:
+        # Escape LIKE metacharacters so user input is treated literally.
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        statement = statement.where(or_(
+            Item.title.ilike(pattern, escape="\\"),
+            Item.description.ilike(pattern, escape="\\"),
+        ))
     if category:
         statement = statement.where(Item.category == category)
-
-    # Invalid listing type error
-    listing_type = request.args.get('listing_type', '').strip().lower()
     if listing_type:
-        if listing_type not in ('lost', 'found'):
-            return jsonify(error="listing_type must be 'lost' or 'found'."), 400
-
         statement = statement.where(Item.listing_type == listing_type)
 
-    statement = statement.order_by(Item.created_at.desc())
+    order = Item.date_reported.desc() if sort == "newest" else Item.date_reported.asc()
+    statement = statement.order_by(order, Item.created_at.desc())
+
     items = db.session.execute(statement).scalars().all()
     return jsonify(posts=[_item_to_dict(item) for item in items]), 200
 
-@posts_bp.route('/', methods=['POST'])
+
+@posts_bp.get("/<int:post_id>")
+def get_post(post_id):
+    item = db.session.get(Item, post_id)
+    if item is None:
+        return jsonify(error="Post not found."), 404
+    return jsonify(post=_item_to_dict(item)), 200
+
+
+@posts_bp.post("/")
 def create_post():
-    """Create a new post and add it to the database"""
+    auth_error = _require_login()
+    if auth_error:
+        return auth_error
 
-    # A new post must be created by a logged-in user
-    if not current_user.is_authenticated:
-        return jsonify(error="Authentication required."), 401
+    data, request_errors = _request_data()
+    if request_errors:
+        return jsonify(errors=request_errors), 400
 
-    data = request.get_json(silent=True)
-
-    cleaned_data, errors = _validate_item_data(data)
-
+    cleaned, errors = _validate_item_data(data)
     if errors:
         return jsonify(errors=errors), 400
 
-    # Create a new item with the current user's ID and the cleaned data
-    item = Item(user_id=current_user.id, **cleaned_data)
+    photo_key, photo_error = store_uploaded_photo(request.files.get("photo"))
+    if photo_error:
+        return jsonify(errors={"photo": photo_error}), 400
+
+    item = Item(user_id=current_user.id, photo_key=photo_key, **cleaned)
     db.session.add(item)
 
-    # Attempt to commit changes to the database. If it fails, perform a rollback
-    try:
-        db.session.commit()
-
-    # Check that database integrity constraints are not violated
-    except IntegrityError:
-        db.session.rollback()
-        current_app.logger.exception("Database integrity error occurred while creating post.")
-        return jsonify(error="Could not create listing."), 400
-
-    # Check for other database-related errors
-    except SQLAlchemyError:
-        db.session.rollback()
-        current_app.logger.exception("Database error occurred while creating post.")
-        return jsonify(error="A database error occurred."), 500
+    if not _commit():
+        _discard_photo(photo_key)
+        return jsonify(error="Could not create the post."), 500
 
     return jsonify(post=_item_to_dict(item)), 201
 
-@posts_bp.route('/<int:post_id>', methods=['PATCH'])
+
+@posts_bp.patch("/<int:post_id>")
 def update_post(post_id):
-    """Edit an existing post"""
+    auth_error = _require_login()
+    if auth_error:
+        return auth_error
 
-    # Check that the user is logged in
-    if not current_user.is_authenticated:
-        return jsonify(error="Authentication required."), 401
+    item, error_response = _owned_post(post_id)
+    if error_response:
+        return error_response
 
-    item = db.session.get(Item, post_id)
-    if item is None:
-        return jsonify(error="Post not found."), 404
+    data, request_errors = _request_data()
+    if request_errors:
+        return jsonify(errors=request_errors), 400
 
-    # Only the owner of the post can edit it
-    if item.user_id != current_user.id:
-        return jsonify(error="You do not own this post."), 403
+    upload = request.files.get("photo")
+    remove_photo = False
+    if "remove_photo" in data:
+        try:
+            remove_photo = _parse_bool(data.pop("remove_photo"), "remove_photo")
+        except ValueError as error:
+            return jsonify(errors={"remove_photo": str(error)}), 400
 
-    # Retrieve the submitted JSON, validate it
-    data = request.get_json(silent=True)
-    cleaned_data, errors = _validate_item_data(data, partial=True)
-
+    has_upload = bool(upload and (upload.filename or "").strip())
+    if has_upload and remove_photo:
+        return jsonify(errors={"photo": "Choose a replacement photo or remove the existing photo, not both."}), 400
+    cleaned, errors = _validate_item_data(data, partial=True, allow_empty=has_upload or remove_photo)
     if errors:
         return jsonify(errors=errors), 400
+    if not cleaned and not has_upload and not remove_photo:
+        return jsonify(errors={"body": "No changes were supplied."}), 400
 
-    # Update only the relevant fields
-    for field, value in cleaned_data.items():
+    new_photo_key = None
+    if has_upload:
+        new_photo_key, photo_error = store_uploaded_photo(upload)
+        if photo_error:
+            return jsonify(errors={"photo": photo_error}), 400
+
+    previous_photo_key = item.photo_key
+    for field, value in cleaned.items():
         setattr(item, field, value)
 
-    # Attempt to save changes to the database
-    try:
-        db.session.commit()
+    if new_photo_key:
+        item.photo_key = new_photo_key
+    elif remove_photo:
+        item.photo_key = None
 
-    # Check that database integrity constraints are not violated
-    except IntegrityError:
-        db.session.rollback()
-        current_app.logger.exception("Database integrity error occurred while updating post.")
-        return jsonify(error="Could not update listing."), 400
+    if not _commit():
+        _discard_photo(new_photo_key)
+        return jsonify(error="Could not update the post."), 500
 
-    # Check for other database-related errors
-    except SQLAlchemyError:
-        db.session.rollback()
-        current_app.logger.exception("Database error occurred while updating post.")
-        return jsonify(error="A database error occurred."), 500
+    if (new_photo_key or remove_photo) and previous_photo_key:
+        _discard_photo(previous_photo_key)
 
     return jsonify(post=_item_to_dict(item)), 200
 
-@posts_bp.route('/<int:post_id>', methods=['DELETE'])
+
+@posts_bp.delete("/<int:post_id>")
 def delete_post(post_id):
-    """Delete an existing post"""
+    auth_error = _require_login()
+    if auth_error:
+        return auth_error
 
-    # Check that the user is logged in
-    if not current_user.is_authenticated:
-        return jsonify(error="Authentication required."), 401
+    item, error_response = _owned_post(post_id)
+    if error_response:
+        return error_response
 
-    # Retrieve the item to be deleted from the database
-    item = db.session.get(Item, post_id)
-    if item is None:
-        return jsonify(error="Post not found."), 404
+    photo_key = item.photo_key
+    db.session.delete(item)
+    if not _commit():
+        return jsonify(error="Could not delete the post."), 500
 
-    # Check that the user has permission to delete the post
-    if item.user_id != current_user.id:
-        return jsonify(error="You do not own this post."), 403
-
-    # Attempt to delete the entry and commit the changes in the database
-    try:
-        db.session.delete(item)
-        db.session.commit()
-
-    except IntegrityError:
-        db.session.rollback()
-        current_app.logger.exception("Database integrity error occurred while deleting post.")
-        return jsonify(error="Could not delete listing because it is referenced by another record."), 409
-
-    except SQLAlchemyError:
-        db.session.rollback()
-        current_app.logger.exception("Database error occurred while deleting post.")
-        return jsonify(error="A database error occurred."), 500
-
-    return '', 204
+    _discard_photo(photo_key)
+    return "", 204
