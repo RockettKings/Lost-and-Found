@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Post · Lost and Found{% endblock %}
+{% block content %}
+  <section id="post-detail" data-post-id="{{ post_id }}">
+    <p class="status-message" role="status" aria-live="polite">Loading post…</p>
+  </section>
+{% endblock %}

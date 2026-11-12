@@ -1,0 +1,8 @@
+{# Renders one form field with its errors. Jinja auto-escapes all values. #}
+{% macro field(f) %}
+  <div class="field">
+    {{ f.label }}
+    {{ f(**kwargs) }}
+    {% for error in f.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </div>
+{% endmacro %}
