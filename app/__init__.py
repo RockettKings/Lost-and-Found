@@ -68,24 +68,24 @@ def create_app(test_config=None):
 
     @app.get("/")
     def index():
-        # The browser loads post data from GET /posts/ using JavaScript.
+        # The browser loads post data from GET /api/posts/ using JavaScript.
         return render_template("index.html")
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
-        if request.path.startswith("/posts"):
+        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
             return jsonify(error="CSRF validation failed. Refresh the page and try again."), 400
         return render_template("403.html"), 400
 
     @app.errorhandler(404)
     def page_not_found(_error):
-        if request.path.startswith("/posts"):
+        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
             return jsonify(error="Post or endpoint not found."), 404
         return render_template("404.html"), 404
 
     @app.errorhandler(403)
     def forbidden(_error):
-        if request.path.startswith("/posts"):
+        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
             return jsonify(error="You are not allowed to perform this action."), 403
         return render_template("403.html"), 403
 

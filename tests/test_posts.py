@@ -1,9 +1,35 @@
 
 from datetime import date
+import re
 
 from app.models import Item, User
 
 TEST_PASSWORD = "posts test password"
+
+
+def test_browser_post_request_requires_csrf_header(client, app):
+    """Use the real form's meta token, just as posts.js does in the browser."""
+    client.post("/auth/register", data={
+        "email": "browser@example.edu", "password": TEST_PASSWORD, "confirm": TEST_PASSWORD,
+    })
+    app.config["WTF_CSRF_ENABLED"] = True
+    rejected = client.post("/api/posts/", json=_valid_post_data())
+    assert rejected.status_code == 400
+    assert rejected.is_json
+    assert "CSRF" in rejected.json["error"]
+
+    page = client.get("/posts/new").get_data(as_text=True)
+    token = re.search(r'name="csrf-token" content="([^"]+)"', page).group(1)
+    accepted = client.post("/api/posts/", data=_valid_post_data(),
+                           headers={"X-CSRFToken": token})
+    assert accepted.status_code == 201
+
+
+def test_unknown_api_route_returns_json(client):
+    response = client.get("/api/posts/missing-route")
+    assert response.status_code == 404
+    assert response.is_json
+    assert "error" in response.json
 
 
 # HELPER FUNCTIONS

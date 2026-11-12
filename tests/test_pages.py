@@ -1,12 +1,14 @@
-"""HTML pages for browsing, viewing, and managing posts."""
+"""Page shells and their JSON data: Flask's client does not execute JavaScript."""
 
 from datetime import date
 from io import BytesIO
+import re
+
+from PIL import Image
 
 from app.models import Item, User
+from app.photo_pipeline.strip_metadata import has_gps
 from tests.test_auth import GOOD_PASSWORD, login, register
-
-JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 16
 
 
 def _account(client, app, email="student@example.edu"):
@@ -18,11 +20,8 @@ def _account(client, app, email="student@example.edu"):
 
 def _item(test_db, user_id, **overrides):
     fields = {
-        "title": "Blue backpack",
-        "description": "Lost near the library",
-        "category": "bags",
-        "listing_type": "lost",
-        "general_location": "Library",
+        "title": "Blue backpack", "description": "Lost near the library",
+        "category": "bags", "listing_type": "lost", "general_location": "Library",
         "date_reported": date(2026, 1, 2),
     }
     fields.update(overrides)
@@ -34,216 +33,200 @@ def _item(test_db, user_id, **overrides):
 
 def _form(title="Lost wallet", **overrides):
     data = {
-        "title": title,
-        "description": "Black leather wallet",
-        "category": "Accessories",
-        "listing_type": "lost",
-        "general_location": "Cafeteria",
-        "date_reported": "2026-11-08",
+        "title": title, "description": "Black leather wallet", "category": "Accessories",
+        "listing_type": "lost", "general_location": "Cafeteria", "date_reported": "2026-11-08",
     }
     data.update(overrides)
     return data
 
 
-def test_home_lists_posts_and_links_to_details(client, app, test_db):
-    assert b"No posts yet." in client.get("/").data
+def test_home_loads_assets_and_listing_data(client, app, test_db):
+    page = client.get("/")
+    assert page.status_code == 200
+    assert b'id="post-list"' in page.data
+    assert b'id="post-search-form"' in page.data
+    # Every asset referenced by the layout must exist, including its JS data loader.
+    assets = re.findall(r'(?:href|src)="(/static/[^\"]+)"', page.get_data(as_text=True))
+    assert "/static/posts.js" in assets
+    for asset in assets:
+        assert client.get(asset).status_code == 200
+    assert client.get("/api/posts/").json == {"posts": []}
 
     user_id = _account(client, app)
     client.post("/auth/logout")
-    first = _item(test_db, user_id, title="Blue backpack", date_reported=date(2026, 1, 1))
+    first = _item(test_db, user_id, date_reported=date(2026, 1, 1))
     second = _item(test_db, user_id, title="Silver laptop", listing_type="found",
                    category="electronics", date_reported=date(2026, 6, 1))
-
-    page = client.get("/").data
-    assert b"Blue backpack" in page
-    assert b"Silver laptop" in page
-    assert b"Lost" in page
-    assert b"Found" in page
-    assert b"bags" in page
-    assert b"electronics" in page
-    assert b"2026-01-01" in page
-    assert b"2026-06-01" in page
-    assert f'/items/{first.id}'.encode() in page
-    assert f'/items/{second.id}'.encode() in page
-    assert page.find(b"Silver laptop") < page.find(b"Blue backpack")
-    assert b"student@example.edu" not in page
-
-    listing = client.get("/posts/")
+    listing = client.get("/api/posts/")
     assert listing.status_code == 200
-    assert listing.is_json
-    assert {post["title"] for post in listing.get_json()["posts"]} == {
-        "Blue backpack", "Silver laptop",
-    }
+    assert [post["id"] for post in listing.json["posts"]] == [second.id, first.id]
+    assert {post["listing_type"] for post in listing.json["posts"]} == {"lost", "found"}
+    assert {post["category"] for post in listing.json["posts"]} == {"bags", "electronics"}
+    for post in listing.json["posts"]:
+        assert client.get(f'/posts/{post["id"]}').status_code == 200
+    assert b"student@example.edu" not in listing.data
 
 
 def test_search_filter_and_sort(client, app, test_db):
     user_id = _account(client, app)
     client.post("/auth/logout")
-    _item(test_db, user_id, title="Blue backpack", description="Lost near the library",
-          category="bags", listing_type="lost", date_reported=date(2026, 1, 1))
+    _item(test_db, user_id, date_reported=date(2026, 1, 1))
     _item(test_db, user_id, title="Silver laptop", description="Found in the lab",
           category="electronics", listing_type="found", date_reported=date(2026, 6, 1))
 
-    keyword = client.get("/?q=LIBRARY").data
-    assert b"Blue backpack" in keyword
-    assert b"Silver laptop" not in keyword
-    assert b">Clear</a>" in keyword
+    def titles(query=""):
+        response = client.get("/api/posts/" + query)
+        assert response.status_code == 200
+        return [post["title"] for post in response.json["posts"]]
 
-    lost = client.get("/?listing_type=lost").data
-    assert b"Blue backpack" in lost
-    assert b"Silver laptop" not in lost
-
-    bags = client.get("/?category=bags").data
-    assert b"Blue backpack" in bags
-    assert b"Silver laptop" not in bags
-
-    none = client.get("/?q=umbrella").data
-    assert b"No matching posts." in none
-
-    oldest = client.get("/?sort=oldest").data
-    assert oldest.find(b"Blue backpack") < oldest.find(b"Silver laptop")
-
-    cleared = client.get("/").data
-    assert b"Blue backpack" in cleared
-    assert b"Silver laptop" in cleared
-
-    assert client.get("/posts/?listing_type=other").status_code == 400
+    assert titles("?q=LIBRARY") == ["Blue backpack"]
+    assert titles("?listing_type=lost") == ["Blue backpack"]
+    assert titles("?category=bags") == ["Blue backpack"]
+    assert titles("?q=LIBRARY&category=bags&listing_type=lost") == ["Blue backpack"]
+    assert titles("?q=umbrella") == []
+    assert titles("?sort=oldest") == ["Blue backpack", "Silver laptop"]
+    assert titles() == ["Silver laptop", "Blue backpack"]
+    assert client.get("/api/posts/?listing_type=other").status_code == 400
 
 
-def test_detail_page_shows_fields_and_unknown_id_is_404(client, app, test_db, monkeypatch):
+def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, monkeypatch):
     user_id = _account(client, app)
     client.post("/auth/logout")
-    item = _item(test_db, user_id)
-    item.photo_key = "items/" + "ab" * 16 + ".jpg"
-    test_db.session.commit()
-    monkeypatch.setattr(
-        "app.items.routes.photo_url",
-        lambda key: "https://photos.example/backpack.jpg",
-    )
+    item = _item(test_db, user_id, photo_key="items/" + "ab" * 16 + ".jpg")
+    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/backpack.jpg")
 
-    page = client.get(f"/items/{item.id}")
+    page = client.get(f"/posts/{item.id}")
     assert page.status_code == 200
-    body = page.data
-    assert b"Blue backpack" in body
-    assert b"Lost near the library" in body
-    assert b"bags" in body
-    assert b"2026-01-02" in body
-    assert b"Library" in body
-    assert b"Lost" in body
-    assert b"Open" in body
-    assert b"https://photos.example/backpack.jpg" in body
-    assert b"student@example.edu" not in body
-    assert b"Edit" not in body
+    assert f'data-post-id="{item.id}"'.encode() in page.data
+    api = client.get(f"/api/posts/{item.id}")
+    assert api.status_code == 200
+    post = api.json["post"]
+    assert post["title"] == "Blue backpack"
+    assert post["description"] == "Lost near the library"
+    assert post["category"] == "bags"
+    assert post["date_reported"] == "2026-01-02"
+    assert post["general_location"] == "Library"
+    assert post["listing_type"] == "lost"
+    assert post["resolved"] is False
+    assert post["photo_url"] == "https://photos.example/backpack.jpg"
+    assert post["is_owner"] is False
+    assert "email" not in post and "password_hash" not in post and "user_id" not in post
+    assert b"student@example.edu" not in page.data + api.data
 
-    missing = client.get("/items/9999")
+    missing = client.get("/posts/9999")
     assert missing.status_code == 404
     assert b"Page not found" in missing.data
     assert b"Lost and Found" in missing.data
-
-    api = client.get(f"/posts/{item.id}")
-    assert api.status_code == 200
-    assert api.is_json
-    assert api.get_json()["title"] == "Blue backpack"
+    missing_api = client.get("/api/posts/9999")
+    assert missing_api.status_code == 404 and missing_api.is_json
 
 
 def test_create_post_requires_login_and_valid_fields(client, app, test_db):
-    guest = client.get("/items/new")
+    guest = client.get("/posts/new")
     assert guest.status_code == 302
     assert "/auth/login" in guest.headers["Location"]
+    assert client.post("/api/posts/", json=_form()).status_code == 401
 
     register(client)
-    empty = client.post("/items/new", data=_form(title="  "))
-    assert empty.status_code == 200
-    assert b"This field is required." in empty.data
-    with app.app_context():
-        from app.extensions import db
-        assert db.session.execute(db.select(Item)).first() is None
+    page = client.get("/posts/new")
+    assert page.status_code == 200
+    assert b'id="post-form"' in page.data
+    empty = client.post("/api/posts/", data=_form(title="  "))
+    assert empty.status_code == 400
+    assert "title" in empty.json["errors"]
+    assert test_db.session.execute(test_db.select(Item)).first() is None
 
-    created = client.post("/items/new", data=_form())
-    assert created.status_code == 302
-    detail = client.get(created.headers["Location"])
-    assert b"Lost wallet" in detail.data
-    assert b"Black leather wallet" in detail.data
-    assert b"Cafeteria" in detail.data
-    home = client.get("/")
-    assert b"Lost wallet" in home.data
+    created = client.post("/api/posts/", data=_form())
+    assert created.status_code == 201
+    post = created.json["post"]
+    assert post["title"] == "Lost wallet"
+    assert post["description"] == "Black leather wallet"
+    assert post["general_location"] == "Cafeteria"
+    assert client.get(f'/posts/{post["id"]}').status_code == 200
+    assert client.get("/api/posts/").json["posts"][0]["id"] == post["id"]
 
 
 def test_owner_can_edit_and_delete_and_others_cannot(client, app, test_db):
     owner_id = _account(client, app, email="owner@example.edu")
-    item = _item(test_db, owner_id, title="Blue backpack")
-
-    owner_page = client.get(f"/items/{item.id}")
-    assert b"Edit" in owner_page.data
-    assert b"Delete post" in owner_page.data
-
-    edited = client.post(f"/items/{item.id}/edit", data=_form(title="Navy backpack"))
-    assert edited.status_code == 302
-    assert b"Navy backpack" in client.get(f"/items/{item.id}").data
+    item = _item(test_db, owner_id)
+    item_id = item.id
+    assert client.get(f"/posts/{item_id}/edit").status_code == 200
+    assert client.get(f"/api/posts/{item_id}").json["post"]["is_owner"] is True
+    edited = client.patch(f"/api/posts/{item_id}", json={"title": "Navy backpack"})
+    assert edited.status_code == 200
+    assert edited.json["post"]["title"] == "Navy backpack"
 
     client.post("/auth/logout")
     register(client, email="other@example.edu")
-    forbidden = client.get(f"/items/{item.id}")
-    assert b"Edit" not in forbidden.data
-    assert b"Delete post" not in forbidden.data
-    assert b"Mark resolved" not in forbidden.data
-    assert client.post(f"/items/{item.id}/edit", data=_form(title="Hijack")).status_code == 403
-    assert client.post(f"/items/{item.id}/delete").status_code == 403
-    assert client.post(f"/items/{item.id}/resolve").status_code == 403
-    with app.app_context():
-        from app.extensions import db
-        assert db.session.get(Item, item.id).title == "Navy backpack"
+    assert client.get(f"/api/posts/{item_id}").json["post"]["is_owner"] is False
+    forbidden = client.get(f"/posts/{item_id}/edit")
+    assert forbidden.status_code == 403
+    assert b"Lost and Found" in forbidden.data and not forbidden.is_json
+    assert client.patch(f"/api/posts/{item_id}", json={"title": "Hijack"}).status_code == 403
+    assert client.delete(f"/api/posts/{item_id}").status_code == 403
+    assert client.patch(f"/api/posts/{item_id}", json={"resolved": True}).status_code == 403
+    test_db.session.expire_all()
+    assert test_db.session.get(Item, item_id).title == "Navy backpack"
 
     client.post("/auth/logout")
     login(client, email="owner@example.edu", password=GOOD_PASSWORD)
-    deleted = client.post(f"/items/{item.id}/delete")
-    assert deleted.status_code == 302
-    assert deleted.headers["Location"].endswith("/")
-    assert client.get(f"/items/{item.id}").status_code == 404
-    assert b"Navy backpack" not in client.get("/").data
+    assert client.delete(f"/api/posts/{item_id}").status_code == 204
+    assert client.get(f"/posts/{item_id}").status_code == 404
+    assert client.get("/api/posts/").json == {"posts": []}
+    test_db.session.expire_all()
+    assert test_db.session.get(Item, item_id) is None
 
 
 def test_owner_can_mark_a_post_resolved(client, app, test_db):
-    owner_id = _account(client, app, email="owner@example.edu")
+    owner_id = _account(client, app)
     item = _item(test_db, owner_id)
-
-    page = client.get(f"/items/{item.id}")
-    assert b"Mark resolved" in page.data
-    assert b"Open" in page.data
-
-    resolved = client.post(f"/items/{item.id}/resolve")
-    assert resolved.status_code == 302
-    detail = client.get(f"/items/{item.id}").data
-    assert b"Resolved" in detail
-    assert b"Mark resolved" not in detail
-    assert b"Resolved" in client.get("/").data
-
-    with app.app_context():
-        from app.extensions import db
-        assert db.session.get(Item, item.id).resolved is True
+    resolved = client.patch(f"/api/posts/{item.id}", json={"resolved": True})
+    assert resolved.status_code == 200
+    assert resolved.json["post"]["resolved"] is True
+    assert client.get(f"/api/posts/{item.id}").json["post"]["resolved"] is True
+    assert client.get("/api/posts/").json["posts"][0]["resolved"] is True
+    test_db.session.expire_all()
+    assert test_db.session.get(Item, item.id).resolved is True
 
 
-def test_non_image_upload_is_rejected_and_jpeg_waits_for_processing(client, app):
+def test_non_image_is_rejected_and_photo_is_processed_before_storage(client, app, test_db, monkeypatch):
     register(client)
+    stored = []
+    key = "items/" + "ab" * 16 + ".jpg"
 
-    rejected = client.post("/items/new", data={
-        **_form(title="Text file"),
-        "photo": (BytesIO(b"not a picture"), "notes.txt"),
-    })
-    assert rejected.status_code == 200
-    assert b"Please choose an image file." in rejected.data
-    with app.app_context():
-        from app.extensions import db
-        assert db.session.execute(db.select(Item)).first() is None
+    def save_processed_photo(data):
+        stored.append(data)
+        with Image.open(BytesIO(data)) as image:
+            assert image.format == "JPEG"
+            assert not has_gps(image)
+            assert image.size == (10, 20)  # Input orientation has been applied.
+        return key
 
-    accepted = client.post("/items/new", data={
-        **_form(title="Camera photo"),
-        "photo": (BytesIO(JPEG), "camera.jpg"),
+    # Fake only cloud storage; run the real image validation/metadata pipeline.
+    monkeypatch.setattr("app.posts.photos.save_photo", save_processed_photo)
+    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/photo.jpg")
+    rejected = client.post("/api/posts/", data={
+        **_form(title="Text file"), "photo": (BytesIO(b"not a picture"), "fake.jpg"),
     })
-    assert accepted.status_code == 302
-    with app.app_context():
-        from app.extensions import db
-        item = db.session.execute(db.select(Item)).scalar_one()
-        assert item.title == "Camera photo"
-        assert item.photo_key is None
-    assert b"image processing" in client.get(accepted.headers["Location"]).data
+    assert rejected.status_code == 400
+    assert "photo" in rejected.json["errors"]
+    assert not stored
+    assert test_db.session.execute(test_db.select(Item)).first() is None
+
+    image = Image.new("RGB", (20, 10), "blue")
+    exif = Image.Exif()
+    exif[274] = 6
+    exif[34853] = {1: "N", 2: (10.0, 0.0, 0.0), 3: "E", 4: (20.0, 0.0, 0.0)}
+    upload = BytesIO()
+    image.save(upload, format="JPEG", exif=exif)
+    upload.seek(0)
+    assert has_gps(upload)
+    upload.seek(0)
+    accepted = client.post("/api/posts/", data={
+        **_form(title="Camera photo"), "photo": (upload, "camera.jpg"),
+    })
+    assert accepted.status_code == 201
+    assert len(stored) == 1
+    saved = test_db.session.get(Item, accepted.json["post"]["id"])
+    assert saved.photo_key == key
+    assert accepted.json["post"]["photo_url"] == "https://photos.example/photo.jpg"
