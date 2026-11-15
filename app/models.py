@@ -1,4 +1,4 @@
-"""Sprint 1 stores accounts and lost/found posts. Claims come in a later sprint."""
+"""Shared database models for accounts and lost/found posts."""
 
 from datetime import datetime, timezone
 
@@ -18,10 +18,19 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
     __table_args__ = (
         db.CheckConstraint("length(email) BETWEEN 3 AND 254", name="email_length"),
+        db.CheckConstraint(
+            "display_name IS NULL OR (length(display_name) BETWEEN 1 AND 80 "
+            "AND display_name = trim(display_name))", name="display_name_length",
+        ),
+        db.CheckConstraint("bio IS NULL OR length(bio) <= 500", name="bio_length"),
+        db.Index("uq_users_display_name", "display_name", unique=True),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(254), unique=True, nullable=False)
+    # Optional for existing accounts. SQLite NOCASE compares ASCII letters without case.
+    display_name = db.Column(db.String(80, collation="NOCASE"), nullable=True)
+    bio = db.Column(db.String(500), nullable=True)
     # D's account code supplies a Werkzeug hash, never a plaintext password.
     password_hash = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
@@ -30,6 +39,15 @@ class User(UserMixin, db.Model):
     @validates("email")
     def normalize_email(self, _field, email):
         return email.strip().lower()
+
+    @validates("display_name")
+    def normalize_display_name(self, _field, name):
+        if name is None:
+            return None
+        if not isinstance(name, str):
+            raise ValueError("Display name must be text.")
+        # Blank names stay unset, allowing multiple accounts to finish profiles later.
+        return name.strip() or None
 
     def set_password(self, password):
         # Werkzeug's default is salted scrypt; only the hash is ever stored.
