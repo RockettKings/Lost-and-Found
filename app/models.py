@@ -35,6 +35,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     items = db.relationship("Item", back_populates="user", passive_deletes="all")
+    claims = db.relationship("Claim", back_populates="claimant", passive_deletes="all")
 
     @validates("email")
     def normalize_email(self, _field, email):
@@ -86,4 +87,34 @@ class Item(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     resolved = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("0"))
     photo_key = db.Column(db.String(255))  # S3 object key, not the image or an expiring URL
+    ownership_questions = db.Column(db.JSON(none_as_null=True), nullable=True)
     user = db.relationship("User", back_populates="items")
+    claims = db.relationship("Claim", back_populates="item", cascade="all, delete-orphan",
+                             passive_deletes=True)
+
+
+class Claim(db.Model):
+    __tablename__ = "claims"
+    __table_args__ = (
+        db.CheckConstraint("status IN ('pending', 'approved', 'denied')", name="claim_status"),
+        db.CheckConstraint("supporting_details IS NULL OR length(supporting_details) <= 2000",
+                           name="claim_details_length"),
+        # Partial indexes enforce these rules even if two requests arrive together.
+        db.Index("uq_claim_pending_user_item", "item_id", "claimant_id", unique=True,
+                 sqlite_where=db.text("status = 'pending'")),
+        db.Index("uq_claim_approved_item", "item_id", unique=True,
+                 sqlite_where=db.text("status = 'approved'")),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey("items.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    claimant_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"),
+                            nullable=False, index=True)
+    # Keep the question text with each answer so its meaning survives future changes.
+    ownership_answers = db.Column(db.JSON, nullable=False)
+    supporting_details = db.Column(db.String(2000), nullable=True)
+    status = db.Column(db.String(8), nullable=False, default="pending", server_default="pending")
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    item = db.relationship("Item", back_populates="claims")
+    claimant = db.relationship("User", back_populates="claims")

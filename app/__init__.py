@@ -55,12 +55,14 @@ def create_app(test_config=None):
     migrate.init_app(app, db, render_as_batch=True)
 
     from app.auth.routes import auth_bp
+    from app.claims.routes import claims_bp
     from app.pages.routes import pages_bp
     from app.posts.routes import posts_bp
     from app.profiles.routes import profiles_bp
     from app.reports.routes import reports_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(claims_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(posts_bp)
     app.register_blueprint(profiles_bp)

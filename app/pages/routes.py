@@ -18,9 +18,10 @@ def create_post():
 @pages_bp.get("/<int:post_id>")
 def detail(post_id):
     # Check existence so a bad URL gets the normal 404 page.
-    if db.session.get(Item, post_id) is None:
+    item = db.session.get(Item, post_id)
+    if item is None:
         abort(404)
-    return render_template("posts/detail.html", post_id=post_id)
+    return render_template("posts/detail.html", post_id=post_id, item=item)
 
 
 @pages_bp.get("/<int:post_id>/edit")

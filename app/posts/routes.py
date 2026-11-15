@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
-from app.models import Item
+from app.models import Claim, Item
 from app.storage import photo_url
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
@@ -282,6 +282,16 @@ def update_post(post_id):
         new_photo_key, photo_error = store_uploaded_photo(upload)
         if photo_error:
             return jsonify(errors={"photo": photo_error}), 400
+
+    if cleaned.get("listing_type") == "lost":
+        # Claim submission also locks this row: the check cannot race a new claim.
+        result = db.session.execute(db.update(Item).where(
+            Item.id == item.id, ~db.exists().where(Claim.item_id == item.id),
+        ).values(listing_type="lost").execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            db.session.rollback()
+            _discard_photo(new_photo_key)
+            return jsonify(error="A found post with claims cannot be changed to lost."), 409
 
     previous_photo_key = item.photo_key
     for field, value in cleaned.items():

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}My claims · Lost and Found{% endblock %}
+{% block content %}
+<h1>My claims</h1>
+{% for claim in pagination.items %}
+  <article class="card">
+    <h2><a href="{{ url_for('pages.detail', post_id=claim.item_id) }}">{{ claim.item.title }}</a></h2>
+    <p>Status: <strong>{{ claim.status|capitalize }}</strong> · {{ claim.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    <dl>
+      {% for entry in claim.ownership_answers %}<dt>{{ entry.question }}</dt><dd>{{ entry.answer }}</dd>{% endfor %}
+    </dl>
+    {% if claim.supporting_details %}<p>{{ claim.supporting_details }}</p>{% endif %}
+  </article>
+{% else %}<p>You have not submitted any claims.</p>{% endfor %}
+{% if pagination.has_prev %}<a href="{{ url_for('claims.mine', page=pagination.prev_num) }}">Previous</a>{% endif %}
+{% if pagination.has_next %}<a href="{{ url_for('claims.mine', page=pagination.next_num) }}">Next</a>{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Ownership questions · Lost and Found{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Ownership questions</h1>
+  <p>{{ item.title }}</p>
+  <p>Ask 1–3 questions that help identify the owner. Keep identifying answers out of the public post.</p>
+  {% if locked %}<p>Questions are locked because a claim has been submitted or the item is resolved.</p>{% endif %}
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {% for field in form.questions %}
+      <div class="field">
+        {{ field.label }} {{ field(maxlength=200, readonly=locked) }}
+        {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+      </div>
+    {% endfor %}
+    {% for error in form.questions.errors if error is string %}<p class="error">{{ error }}</p>{% endfor %}
+    {% if not locked %}<button class="button" type="submit">Save questions</button>{% endif %}
+  </form>
+  <p><a href="{{ url_for('pages.detail', post_id=item.id) }}">Back to item</a></p>
+</div>
+{% endblock %}
