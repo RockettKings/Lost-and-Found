@@ -1,6 +1,11 @@
 """Bridge between uploaded files, E's image pipeline, and S3 storage."""
 
+from botocore.exceptions import BotoCoreError, ClientError
+from flask import current_app
+
 from app.storage import delete_photo, save_photo
+
+UPLOAD_FAILED = "We couldn't upload your photo. Please try again."
 
 
 def store_uploaded_photo(upload):
@@ -21,6 +26,10 @@ def store_uploaded_photo(upload):
         return save_photo(cleaned_jpeg), None
     except ValueError as error:
         return None, str(error) or "Please choose a valid image."
+    except (BotoCoreError, ClientError, RuntimeError):
+        # The upload runs before the post is saved, so no row can point at a missing file.
+        current_app.logger.exception("Could not upload a post photo to cloud storage.")
+        return None, UPLOAD_FAILED
     finally:
         try:
             upload.stream.seek(0)

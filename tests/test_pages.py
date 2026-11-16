@@ -93,7 +93,7 @@ def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, mo
     user_id = _account(client, app)
     client.post("/auth/logout")
     item = _item(test_db, user_id, photo_key="items/" + "ab" * 16 + ".jpg")
-    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/backpack.jpg")
+    monkeypatch.setattr("app.posts.routes.get_photo", lambda key: "https://photos.example/backpack.jpg")
 
     page = client.get(f"/posts/{item.id}")
     assert page.status_code == 200
@@ -204,7 +204,7 @@ def test_non_image_is_rejected_and_photo_is_processed_before_storage(client, app
 
     # Fake only cloud storage; run the real image validation/metadata pipeline.
     monkeypatch.setattr("app.posts.photos.save_photo", save_processed_photo)
-    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/photo.jpg")
+    monkeypatch.setattr("app.posts.routes.get_photo", lambda key: "https://photos.example/photo.jpg")
     rejected = client.post("/api/posts/", data={
         **_form(title="Text file"), "photo": (BytesIO(b"not a picture"), "fake.jpg"),
     })

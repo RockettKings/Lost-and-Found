@@ -45,6 +45,11 @@ def photo_url(key):
     )
 
 
+def get_photo(key):
+    """Return a short-lived URL for showing a stored photo on its post."""
+    return photo_url(key)
+
+
 def delete_photo(key):
     """Clean up an uploaded photo if saving its database record fails."""
     _check_key(key)

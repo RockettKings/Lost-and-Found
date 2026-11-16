@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.extensions import db
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Claim, Item
-from app.storage import photo_url
+from app.storage import get_photo
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
@@ -37,7 +37,7 @@ def _photo_url(item):
     if not item.photo_key:
         return None
     try:
-        return photo_url(item.photo_key)
+        return get_photo(item.photo_key)
     except Exception:
         current_app.logger.exception("Could not generate a post photo URL.")
         return None
