@@ -12,3 +12,10 @@
 | Andrew Kruckemyer | Database | 2, 23, 38, 4, 31 | 2.0 |
 | Nick Heyer | Security | 8, 16, 22, 23 | 3.0 |
 | **Total** | | | **19.0** |
+
+## Sprint 2
+
+| Name | Role | Work (Req IDs) | Hours |
+|---|---|---|---|
+| Jaycob Campos | Project Manager | Sprint 2 board update: verified completed work, added Overdue column, assigned owners | 2.0 |
+| **Total** | | | **2.0** |
