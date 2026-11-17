@@ -50,6 +50,11 @@ class User(UserMixin, db.Model):
         # Blank names stay unset, allowing multiple accounts to finish profiles later.
         return name.strip() or None
 
+    @property
+    def public_name(self):
+        """The name shown to other users. Never fall back to the email."""
+        return self.display_name or f"User #{self.id}"
+
     def set_password(self, password):
         # Werkzeug's default is salted scrypt; only the hash is ever stored.
         self.password_hash = generate_password_hash(password)

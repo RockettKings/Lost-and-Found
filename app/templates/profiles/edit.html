@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "auth/_field.html" import field %}
+{% block title %}Edit profile · Lost and Found{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Edit profile</h1>
+  <p class="meta">Other users see your display name instead of your email.</p>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.display_name, maxlength=80) }}
+    {{ field(form.bio, maxlength=500, rows=4) }}
+    <div class="actions">
+      <button class="button" type="submit">Save</button>
+      <a href="{{ url_for('profiles.mine') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
