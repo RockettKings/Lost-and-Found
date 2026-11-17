@@ -2,10 +2,10 @@ from datetime import date
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Item
 from app.storage import photo_url
@@ -43,8 +43,13 @@ def _photo_url(item):
         return None
 
 
+def _is_admin():
+    return bool(current_user.is_authenticated and current_user.is_admin)
+
+
 def _item_to_dict(item):
     """Serialize a post without exposing private user information."""
+    is_owner = bool(current_user.is_authenticated and item.user_id == current_user.id)
     return {
         "id": item.id,
         "title": item.title,
@@ -56,7 +61,10 @@ def _item_to_dict(item):
         "created_at": item.created_at.isoformat() + "Z",
         "resolved": bool(item.resolved),
         "photo_url": _photo_url(item),
-        "is_owner": bool(current_user.is_authenticated and item.user_id == current_user.id),
+        "author": item.user.display_name,
+        "is_owner": is_owner,
+        # Admins may delete any post, but editing stays owner-only.
+        "can_delete": is_owner or _is_admin(),
     }
 
 
@@ -166,10 +174,12 @@ def _require_login():
     return None
 
 
-def _owned_post(post_id):
+def _owned_post(post_id, allow_admin=False):
     item = db.session.get(Item, post_id)
     if item is None:
         return None, (jsonify(error="Post not found."), 404)
+    if allow_admin and _is_admin():
+        return item, None
     if item.user_id != current_user.id:
         return None, (jsonify(error="You do not own this post."), 403)
     return item, None
@@ -199,7 +209,8 @@ def get_posts():
             Item.description.ilike(pattern, escape="\\"),
         ))
     if category:
-        statement = statement.where(Item.category == category)
+        # Case-insensitive so "bags", "Bags", and "BAGS" all match.
+        statement = statement.where(func.lower(Item.category) == category.lower())
     if listing_type:
         statement = statement.where(Item.listing_type == listing_type)
 
@@ -219,6 +230,7 @@ def get_post(post_id):
 
 
 @posts_bp.post("/")
+@limiter.limit("10 per minute;50 per hour")  # Stops spam posting.
 def create_post():
     auth_error = _require_login()
     if auth_error:
@@ -247,6 +259,7 @@ def create_post():
 
 
 @posts_bp.patch("/<int:post_id>")
+@limiter.limit("30 per minute")
 def update_post(post_id):
     auth_error = _require_login()
     if auth_error:
@@ -303,14 +316,18 @@ def update_post(post_id):
 
 
 @posts_bp.delete("/<int:post_id>")
+@limiter.limit("30 per minute")
 def delete_post(post_id):
     auth_error = _require_login()
     if auth_error:
         return auth_error
 
-    item, error_response = _owned_post(post_id)
+    item, error_response = _owned_post(post_id, allow_admin=True)
     if error_response:
         return error_response
+
+    if item.user_id != current_user.id:
+        current_app.logger.info("Admin user %s deleted post %s.", current_user.id, item.id)
 
     photo_key = item.photo_key
     db.session.delete(item)

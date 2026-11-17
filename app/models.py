@@ -18,18 +18,30 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
     __table_args__ = (
         db.CheckConstraint("length(email) BETWEEN 3 AND 254", name="email_length"),
+        db.Index("uq_users_username_lower", db.text("lower(username)"), unique=True),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(254), unique=True, nullable=False)
+    # Public display name. Stored as typed ("Nick_H") but unique ignoring case, so
+    # nobody can register "nick_h" to imitate it; the database index enforces this.
+    username = db.Column(db.String(20))
     # D's account code supplies a Werkzeug hash, never a plaintext password.
     password_hash = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    # Only granted from the terminal (`flask make-admin`), never through a web form.
+    is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("0"))
     items = db.relationship("Item", back_populates="user", passive_deletes="all")
 
     @validates("email")
     def normalize_email(self, _field, email):
         return email.strip().lower()
+
+    @property
+    def display_name(self):
+        # Accounts made before usernames existed are backfilled by migration 0004;
+        # this fallback only covers rows inserted directly (e.g. in tests).
+        return self.username or f"user{self.id}"
 
     def set_password(self, password):
         # Werkzeug's default is salted scrypt; only the hash is ever stored.

@@ -5,7 +5,7 @@
   <form class="card narrow" method="post" novalidate>
     <h1>Log in</h1>
     {{ form.hidden_tag() }}
-    {{ field(form.email, autocomplete="email", required=true) }}
+    {{ field(form.identifier, autocomplete="username", required=true) }}
     {{ field(form.password, autocomplete="current-password", required=true) }}
     <label class="checkbox">{{ form.remember() }} {{ form.remember.label.text }}</label>
     <button class="button" type="submit">Log in</button>
