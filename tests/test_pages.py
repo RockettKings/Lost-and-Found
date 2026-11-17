@@ -93,7 +93,7 @@ def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, mo
     user_id = _account(client, app)
     client.post("/auth/logout")
     item = _item(test_db, user_id, photo_key="items/" + "ab" * 16 + ".jpg")
-    monkeypatch.setattr("app.posts.routes.get_photo", lambda key: "https://photos.example/backpack.jpg")
+    monkeypatch.setattr("app.serializers.get_photo", lambda key: "https://photos.example/backpack.jpg")
 
     page = client.get(f"/posts/{item.id}")
     assert page.status_code == 200
@@ -110,7 +110,9 @@ def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, mo
     assert post["resolved"] is False
     assert post["photo_url"] == "https://photos.example/backpack.jpg"
     assert post["is_owner"] is False
-    assert "email" not in post and "password_hash" not in post and "user_id" not in post
+    assert "email" not in post and "password_hash" not in post
+    # The poster's id is public: it links the post to their profile page.
+    assert post["user_id"] == user_id
     assert b"student@example.edu" not in page.data + api.data
 
     missing = client.get("/posts/9999")
@@ -204,7 +206,7 @@ def test_non_image_is_rejected_and_photo_is_processed_before_storage(client, app
 
     # Fake only cloud storage; run the real image validation/metadata pipeline.
     monkeypatch.setattr("app.posts.photos.save_photo", save_processed_photo)
-    monkeypatch.setattr("app.posts.routes.get_photo", lambda key: "https://photos.example/photo.jpg")
+    monkeypatch.setattr("app.serializers.get_photo", lambda key: "https://photos.example/photo.jpg")
     rejected = client.post("/api/posts/", data={
         **_form(title="Text file"), "photo": (BytesIO(b"not a picture"), "fake.jpg"),
     })

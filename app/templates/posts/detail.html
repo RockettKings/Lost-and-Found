@@ -4,7 +4,7 @@
   <section id="post-detail" data-post-id="{{ post_id }}">
     <p class="status-message" role="status" aria-live="polite">Loading post…</p>
   </section>
-  <p class="meta">Posted by <a href="{{ url_for('profiles.view', user_id=item.user_id) }}">{{ item.user.public_name }}</a></p>
+  <p class="meta">Posted by <a href="{{ url_for('profile_pages.view', user_id=item.user_id) }}">{{ item.user.public_name }}</a></p>
   {% if item.listing_type == "found" %}
     <div class="card actions">
       {% if current_user.is_authenticated and current_user.id == item.user_id %}

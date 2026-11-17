@@ -1,38 +1,26 @@
 {% extends "base.html" %}
-{% block title %}{{ profile.name }} · Lost and Found{% endblock %}
+{% block title %}Profile · Lost and Found{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='profiles.js') }}" defer></script>{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>{{ profile.name }}</h1>
-  {% if profile.bio %}<p class="description">{{ profile.bio }}</p>{% endif %}
-  <p class="meta">Member since {{ profile.joined.strftime('%B %Y') }}</p>
-  {% if email %}<p class="meta">Email (only you can see this): {{ email }}</p>{% endif %}
-  <div class="actions">
-    {% if is_owner %}
-      <a class="button secondary" href="{{ url_for('profiles.edit') }}">Edit profile</a>
-    {% elif current_user.is_authenticated %}
-      {# Req 43 (private messages) owns this page. #}
-      <a class="button" href="/messages/new?to={{ profile.id }}">Message {{ profile.name }}</a>
-    {% else %}
-      <a href="{{ url_for('auth.login') }}">Log in to send a message</a>
-    {% endif %}
+<section id="profile" data-user-id="{{ user_id }}">
+  <div class="card">
+    <p id="profile-status" class="status-message" role="status" aria-live="polite">Loading profile…</p>
+    <div id="profile-summary"></div>
+    {% if email %}<p class="meta">Email (only you can see this): {{ email }}</p>{% endif %}
+    <div class="actions">
+      {% if email %}
+        <a class="button secondary" href="{{ url_for('profile_pages.edit') }}">Edit profile</a>
+      {% elif current_user.is_authenticated %}
+        {# Req 43 (private messages) owns this page. #}
+        <a class="button" href="/messages/new?to={{ user_id }}">Send a message</a>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Log in to send a message</a>
+      {% endif %}
+    </div>
   </div>
-</section>
 
-<h2>Posts</h2>
-<ul class="posts">
-  {% for item in pagination.items %}
-    <li class="card post-card">
-      <a class="post-title" href="{{ url_for('pages.detail', post_id=item.id) }}">{{ item.title }}</a>
-      <div class="tags">
-        <span class="tag {{ item.listing_type }}">{{ item.listing_type|capitalize }}</span>
-        <span class="tag {{ 'resolved' if item.resolved else 'open' }}">{{ 'Resolved' if item.resolved else 'Open' }}</span>
-      </div>
-      <div class="meta">{{ item.category }} · {{ item.date_reported.isoformat() }}</div>
-    </li>
-  {% else %}
-    <p class="empty">No posts yet.</p>
-  {% endfor %}
-</ul>
-{% if pagination.has_prev %}<a href="{{ url_for('profiles.view', user_id=profile.id, page=pagination.prev_num) }}">Previous</a>{% endif %}
-{% if pagination.has_next %}<a href="{{ url_for('profiles.view', user_id=profile.id, page=pagination.next_num) }}">Next</a>{% endif %}
+  <h2>Posts</h2>
+  <ul id="profile-posts" class="posts"></ul>
+  <nav id="profile-pages" class="actions"></nav>
+</section>
 {% endblock %}

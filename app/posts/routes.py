@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.extensions import db
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Claim, Item
-from app.storage import get_photo
+from app.serializers import serialize_item
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
@@ -22,6 +22,7 @@ TEXT_LIMITS = {
 CREATE_REQUIRED = set(TEXT_LIMITS)
 ALLOWED_UPDATE_FIELDS = CREATE_REQUIRED | {"date_reported", "resolved"}
 
+## HELPER FUNCTIONS
 
 def _discard_photo(photo_key):
     if not photo_key:
@@ -31,34 +32,6 @@ def _discard_photo(photo_key):
     except Exception:
         # A failed S3 cleanup should not undo a committed database operation.
         current_app.logger.exception("Could not delete an obsolete post photo.")
-
-
-def _photo_url(item):
-    if not item.photo_key:
-        return None
-    try:
-        return get_photo(item.photo_key)
-    except Exception:
-        current_app.logger.exception("Could not generate a post photo URL.")
-        return None
-
-
-def _item_to_dict(item):
-    """Serialize a post without exposing private user information."""
-    return {
-        "id": item.id,
-        "title": item.title,
-        "description": item.description,
-        "category": item.category,
-        "listing_type": item.listing_type,
-        "general_location": item.general_location,
-        "date_reported": item.date_reported.isoformat(),
-        "created_at": item.created_at.isoformat() + "Z",
-        "resolved": bool(item.resolved),
-        "photo_url": _photo_url(item),
-        "is_owner": bool(current_user.is_authenticated and item.user_id == current_user.id),
-    }
-
 
 def _parse_bool(value, field):
     if isinstance(value, bool):
@@ -70,7 +43,6 @@ def _parse_bool(value, field):
         if normalized in {"false", "0", "no", "off"}:
             return False
     raise ValueError(f"{field} must be true or false.")
-
 
 def _request_data():
     """Read either a JSON object or multipart/form-data fields."""
@@ -84,7 +56,6 @@ def _request_data():
         return request.form.to_dict(), {}
 
     return None, {"body": "Use application/json or multipart/form-data."}
-
 
 def _validate_item_data(data, partial=False, allow_empty=False):
     if not isinstance(data, dict):
@@ -145,7 +116,6 @@ def _validate_item_data(data, partial=False, allow_empty=False):
 
     return cleaned, errors
 
-
 def _commit():
     try:
         db.session.commit()
@@ -159,12 +129,10 @@ def _commit():
         current_app.logger.exception("Post database error.")
         return False
 
-
 def _require_login():
     if not current_user.is_authenticated:
         return jsonify(error="Authentication required."), 401
     return None
-
 
 def _owned_post(post_id):
     item = db.session.get(Item, post_id)
@@ -174,6 +142,10 @@ def _owned_post(post_id):
         return None, (jsonify(error="You do not own this post."), 403)
     return item, None
 
+def _viewer_id():
+    return current_user.id if current_user.is_authenticated else None
+
+## POSTS FUNCTIONS
 
 @posts_bp.get("/")
 def get_posts():
@@ -207,16 +179,16 @@ def get_posts():
     statement = statement.order_by(order, Item.created_at.desc())
 
     items = db.session.execute(statement).scalars().all()
-    return jsonify(posts=[_item_to_dict(item) for item in items]), 200
+    viewer_id = _viewer_id()
 
+    return jsonify(posts=[serialize_item(item, viewer_id=viewer_id) for item in items]), 200
 
 @posts_bp.get("/<int:post_id>")
 def get_post(post_id):
     item = db.session.get(Item, post_id)
     if item is None:
         return jsonify(error="Post not found."), 404
-    return jsonify(post=_item_to_dict(item)), 200
-
+    return jsonify(post=serialize_item(item, viewer_id=_viewer_id())), 200
 
 @posts_bp.post("/")
 def create_post():
@@ -243,8 +215,7 @@ def create_post():
         _discard_photo(photo_key)
         return jsonify(error="Could not create the post."), 500
 
-    return jsonify(post=_item_to_dict(item)), 201
-
+    return jsonify(post=serialize_item(item, viewer_id=_viewer_id())), 201
 
 @posts_bp.patch("/<int:post_id>")
 def update_post(post_id):
@@ -309,8 +280,7 @@ def update_post(post_id):
     if (new_photo_key or remove_photo) and previous_photo_key:
         _discard_photo(previous_photo_key)
 
-    return jsonify(post=_item_to_dict(item)), 200
-
+    return jsonify(post=serialize_item(item, viewer_id=_viewer_id())), 200
 
 @posts_bp.delete("/<int:post_id>")
 def delete_post(post_id):

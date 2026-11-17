@@ -58,6 +58,7 @@ def create_app(test_config=None):
     from app.claims.routes import claims_bp
     from app.pages.routes import pages_bp
     from app.posts.routes import posts_bp
+    from app.profiles.pages import profile_pages_bp
     from app.profiles.routes import profiles_bp
     from app.reports.routes import reports_bp
 
@@ -65,6 +66,7 @@ def create_app(test_config=None):
     app.register_blueprint(claims_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(posts_bp)
+    app.register_blueprint(profile_pages_bp)
     app.register_blueprint(profiles_bp)
     app.register_blueprint(reports_bp)
 
@@ -75,19 +77,19 @@ def create_app(test_config=None):
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
-        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
+        if request.path.startswith("/api/"):
             return jsonify(error="CSRF validation failed. Refresh the page and try again."), 400
         return render_template("403.html"), 400
 
     @app.errorhandler(404)
     def page_not_found(_error):
-        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
-            return jsonify(error="Post or endpoint not found."), 404
+        if request.path.startswith("/api/"):
+            return jsonify(error="Request or endpoint not found."), 404
         return render_template("404.html"), 404
 
     @app.errorhandler(403)
     def forbidden(_error):
-        if request.path == "/api/posts" or request.path.startswith("/api/posts/"):
+        if request.path.startswith("/api/"):
             return jsonify(error="You are not allowed to perform this action."), 403
         return render_template("403.html"), 403
 
