@@ -18,4 +18,5 @@
 | Name | Role | Work (Req IDs) | Hours |
 |---|---|---|---|
 | Jaycob Campos | Project Manager | Sprint 2 board update: verified completed work, added Overdue column, assigned owners | 2.0 |
-| **Total** | | | **2.0** |
+| Andrew Kruckemyer | Database/Backend | 32, 33 | 2.0 |
+| **Total** | | | **4.0** |
