@@ -10,6 +10,7 @@
     <div class="actions">
       {% if email %}
         <a class="button secondary" href="{{ url_for('profile_pages.edit') }}">Edit profile</a>
+        <a class="button secondary" href="{{ url_for('profile_pages.history') }}">Resolved posts</a>
       {% elif current_user.is_authenticated %}
         {# Req 43 (private messages) owns this page. #}
         <a class="button" href="/messages/new?to={{ user_id }}">Send a message</a>

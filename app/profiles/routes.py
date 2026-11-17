@@ -129,6 +129,11 @@ def get_profile(user_id):
 
     per_page = min(per_page, MAX_PER_PAGE)
 
+    # Resolved-post history (Req 21) asks for only resolved posts
+    resolved_only = request.args.get("resolved")
+    if resolved_only not in (None, "true"):
+        return jsonify(error="resolved must be true when given."), 400
+
     # Select totals of posted items, lost items, found items, and resolved items
     stats = _profile_stats(user.id)
 
@@ -142,6 +147,8 @@ def get_profile(user_id):
             Item.id.desc()
         )
     )
+    if resolved_only:
+        posts_statement = posts_statement.where(Item.resolved.is_(True))
 
     pagination = db.paginate(
         posts_statement,

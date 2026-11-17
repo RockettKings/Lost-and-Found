@@ -26,6 +26,12 @@ def view(user_id):
                            email=current_user.email if is_owner else None)
 
 
+@profile_pages_bp.get("/me/history")
+@login_required
+def history():
+    return render_template("profiles/history.html", user_id=current_user.id)
+
+
 @profile_pages_bp.get("/me/edit")
 @login_required
 def edit():

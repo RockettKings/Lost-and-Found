@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Resolved posts · Lost and Found{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='profiles.js') }}" defer></script>{% endblock %}
+{% block content %}
+<section id="resolved-history" data-user-id="{{ user_id }}">
+  <h1>Resolved posts</h1>
+  <p class="meta">Your posts that were marked resolved after the item was returned.</p>
+  <p id="history-status" class="status-message" role="status" aria-live="polite">Loading posts…</p>
+  <ul id="history-posts" class="posts"></ul>
+  <nav id="history-pages" class="actions"></nav>
+  <p><a href="{{ url_for('profile_pages.mine') }}">Back to my profile</a></p>
+</section>
+{% endblock %}

@@ -10,18 +10,29 @@ function pageLink(page, label) {
   return `<a class="button secondary" href="?page=${page}">${label}</a>`;
 }
 
+function currentPage() {
+  return Number.parseInt(new URLSearchParams(window.location.search).get("page"), 10) || 1;
+}
+
+function renderPostPage(list, pager, posts, pagination, emptyMessage) {
+  list.innerHTML = posts.length
+    ? posts.map(postCard).join("")
+    : `<p class="empty">${escapeHtml(emptyMessage)}</p>`;
+  pager.innerHTML = [
+    pagination.has_prev ? pageLink(pagination.page - 1, "Previous") : "",
+    pagination.has_next ? pageLink(pagination.page + 1, "Next") : "",
+  ].join("");
+}
+
 async function setupProfile() {
   const container = document.querySelector("#profile");
   if (!container) return;
 
   const status = container.querySelector("#profile-status");
   const summary = container.querySelector("#profile-summary");
-  const list = container.querySelector("#profile-posts");
-  const pager = container.querySelector("#profile-pages");
-  const page = Number.parseInt(new URLSearchParams(window.location.search).get("page"), 10) || 1;
 
   try {
-    const { data } = await apiRequest(`/api/profiles/${container.dataset.userId}?page=${page}`);
+    const { data } = await apiRequest(`/api/profiles/${container.dataset.userId}?page=${currentPage()}`);
     const { profile, posts, pagination } = data;
     const name = profileName(profile);
     const joined = new Date(profile.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -33,11 +44,24 @@ async function setupProfile() {
       <h1>${escapeHtml(name)}</h1>
       ${profile.bio ? `<p class="description">${escapeHtml(profile.bio)}</p>` : ""}
       <p class="meta">Member since ${escapeHtml(joined)} · ${stats.total_posts} posts · ${stats.total_resolved} resolved</p>`;
-    list.innerHTML = posts.length ? posts.map(postCard).join("") : '<p class="empty">No posts yet.</p>';
-    pager.innerHTML = [
-      pagination.has_prev ? pageLink(pagination.page - 1, "Previous") : "",
-      pagination.has_next ? pageLink(pagination.page + 1, "Next") : "",
-    ].join("");
+    renderPostPage(container.querySelector("#profile-posts"), container.querySelector("#profile-pages"),
+                   posts, pagination, "No posts yet.");
+  } catch (error) {
+    setStatus(status, error.message, true);
+  }
+}
+
+async function setupResolvedHistory() {
+  const container = document.querySelector("#resolved-history");
+  if (!container) return;
+
+  const status = container.querySelector("#history-status");
+  try {
+    const { data } = await apiRequest(
+      `/api/profiles/${container.dataset.userId}?resolved=true&page=${currentPage()}`);
+    status.hidden = true;
+    renderPostPage(container.querySelector("#history-posts"), container.querySelector("#history-pages"),
+                   data.posts, data.pagination, "You have no resolved posts yet.");
   } catch (error) {
     setStatus(status, error.message, true);
   }
@@ -74,5 +98,6 @@ function setupProfileForm() {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupProfile();
+  setupResolvedHistory();
   setupProfileForm();
 });
