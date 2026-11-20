@@ -3,6 +3,36 @@
 Written by `cnn.py`. **The next run overwrites this file** - copy or rename
 it before starting another experiment if you want to keep these numbers.
 
+## Decisions
+
+Unlike everything below, these are decisions rather than measurements, so they
+outlive any single run. `cnn.py` does not regenerate this section - re-add it
+after a training run overwrites this file.
+
+| Decision | Value |
+| --- | --- |
+| minimum accuracy, ship / no-ship | **75% top-1** on the full held-out test split |
+| minimum accuracy, Req 13 regression | **70% top-1** on `tests/sample_photos/` |
+| confidence threshold | **0.60**, `CONFIDENCE_THRESHOLD` in `app/model.py` |
+
+The two accuracy floors are separate because Req 13 scores a 93-photo fixture
+while the ship decision scored the full 1,147-photo test split. 93 photos carry
+a standard error of about 4 points, so the Req 13 floor sits lower on purpose: a
+sample-set score between 70% and 75% is a passing test, not a passing model.
+Only the full test split decides whether a model ships. A model below 75% does
+not ship, and the post form keeps a plain category field with no prefill - what
+`app/posts/guess.py` already degrades to when the model is unavailable.
+
+The served checkpoint is `best_weights_resnet18_base.pt` (ResNet18), measuring
+78.8% validation and 81.1% test, which clears the ship floor. The run recorded
+below is a later EfficientNet-B0 experiment whose test accuracy has never been
+measured, so it is not the served model.
+
+At 0.60 the guess fills the category field for 54.3% of validation photos and is
+correct 96.9% of the time when it does. Label smoothing during training flattens
+the softmax, so these confidences are lower than an unsmoothed model's - do not
+carry this threshold over to a model trained without it.
+
 ## Settings
 
 | Setting | Value |

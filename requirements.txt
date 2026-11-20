@@ -9,4 +9,7 @@ pillow-heif>=0.18,<2
 python-dotenv>=1,<2
 boto3>=1.35,<2
 gunicorn>=23,<24; sys_platform != "win32"
+# app/model.py builds the network with torchvision.models and preprocesses
+# photos with torchvision.transforms, so the web app needs both, not torch alone.
 torch>=2,<3
+torchvision>=0.20,<1

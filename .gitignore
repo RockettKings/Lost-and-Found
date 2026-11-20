@@ -23,7 +23,11 @@ documents/model-improvement-plan.md
 documents/pretrained-backbone-requirements.md
 documents/label-noise-analysis.md
 documents/label-noise-flagged.csv
+# Checkpoints stay local, except the one the app serves: app/model.py loads
+# best_weights_resnet18_base.pt by default, so a fresh clone needs it to
+# answer Req 5e without training first. 44.8 MB, under GitHub's 50 MB warning.
 best_weights_*.pt
+!best_weights_resnet18_base.pt
 overnight.py
 review_errors.py
 testing_cnn.py

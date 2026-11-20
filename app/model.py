@@ -56,6 +56,10 @@ DEFAULT_WEIGHTS = Path(__file__).resolve().parents[1] / "best_weights_resnet18_b
 # lower than an unsmoothed model would produce - do not compare them to
 # thresholds from other projects. Raise this if wrong guesses prove annoying;
 # the poster can always edit the field (Requirement 11).
+#
+# This threshold, the accuracy floors Requirement 13 asserts against, and what
+# changing the served checkpoint requires are recorded in
+# documents/model-decisions.md.
 CONFIDENCE_THRESHOLD = 0.60
 
 _model = None
