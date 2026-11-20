@@ -14,3 +14,25 @@ backups/
 .coverage
 htmlcov/
 .DS_Store
+
+# ML work-in-progress (local only). The three Req 5d result docs
+# are tracked, as are cnn.py/data_pipeline.py/ensemble.py - they are
+# the Req 5c training pipeline, the requirement's evidence.
+documents/ml-naming.md
+documents/model-improvement-plan.md
+documents/pretrained-backbone-requirements.md
+documents/label-noise-analysis.md
+documents/label-noise-flagged.csv
+best_weights_*.pt
+overnight.py
+review_errors.py
+testing_cnn.py
+missed_categoried/
+CLAUDE.md
+
+# Training data and run output - hundreds of MB, never belongs in git
+documents/dataset/
+documents/misclassified/
+overnight_checkpoints/
+overnight_results/
+.idea/

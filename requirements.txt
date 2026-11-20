@@ -9,3 +9,4 @@ pillow-heif>=0.18,<2
 python-dotenv>=1,<2
 boto3>=1.35,<2
 gunicorn>=23,<24; sys_platform != "win32"
+torch>=2,<3
