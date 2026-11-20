@@ -19,4 +19,9 @@
 |---|---|---|---|
 | Jaycob Campos | Project Manager | Sprint 2 board update: verified completed work, added Overdue column, assigned owners | 2.0 |
 | Andrew Kruckemyer | Database/Backend | 32, 33 | 2.0 |
-| **Total** | | | **4.0** |
+| Jaycob Campos | Project Manager | Sprint 2 PM duties | 2.5 |
+| Jaycob Campos | ML Lead / ML Engineer | Researched CNN architectures, 5c | 5.5 |
+| Jaycob Campos | ML Lead / ML Engineer | Built the CNN, 5c | 5.5 |
+| Jaycob Campos | ML Lead / ML Engineer | Trained the CNN, 5c | 3.5 |
+
+| **Total** | | | **21.0** |
