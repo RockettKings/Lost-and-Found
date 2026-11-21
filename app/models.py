@@ -123,3 +123,45 @@ class Claim(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     item = db.relationship("Item", back_populates="claims")
     claimant = db.relationship("User", back_populates="claims")
+
+
+class Message(db.Model):
+    __tablename__ = "messages"
+    __table_args__ = (
+        db.CheckConstraint("sender_id <> recipient_id", name="message_distinct_users"),
+        db.CheckConstraint("length(trim(text)) BETWEEN 1 AND 2000", name="message_text_length"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"),
+                             nullable=False, index=True)
+    item_id = db.Column(db.Integer, db.ForeignKey("items.id", ondelete="SET NULL"), nullable=True)
+    text = db.Column(db.String(2000), nullable=False)
+    sent_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    sender = db.relationship("User", foreign_keys=[sender_id])
+    recipient = db.relationship("User", foreign_keys=[recipient_id])
+    item = db.relationship("Item")
+
+
+class Notification(db.Model):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(type = 'message' AND message_id IS NOT NULL AND claim_id IS NULL) OR "
+            "(type IN ('claim_submitted', 'claim_approved', 'claim_denied') "
+            "AND claim_id IS NOT NULL AND message_id IS NULL)",
+            name="notification_target",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    claim_id = db.Column(db.Integer, db.ForeignKey("claims.id", ondelete="CASCADE"))
+    message_id = db.Column(db.Integer, db.ForeignKey("messages.id", ondelete="CASCADE"))
+    type = db.Column(db.String(20), nullable=False)
+    read = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    claim = db.relationship("Claim")
+    message = db.relationship("Message")

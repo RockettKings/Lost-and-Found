@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Notifications · Lost and Found{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+{% for notification in pagination.items %}
+  <article class="card" data-notification-id="{{ notification.id }}">
+    {% if not notification.read %}<strong class="unread">Unread</strong>{% endif %}
+    {% if notification.type == 'message' %}
+      <p>New message from {{ notification.message.sender.public_name }}.</p>
+    {% elif notification.type == 'claim_submitted' %}
+      <p>New claim on {{ notification.claim.item.title }}.</p>
+    {% elif notification.type == 'claim_approved' %}
+      <p>Your claim on {{ notification.claim.item.title }} was approved.</p>
+    {% else %}
+      <p>Your claim on {{ notification.claim.item.title }} was denied.</p>
+    {% endif %}
+    <p>{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    <form method="post" action="{{ url_for('notifications.open_notification', notification_id=notification.id) }}">
+      {{ form.hidden_tag() }}
+      <button class="button" type="submit">Open</button>
+    </form>
+  </article>
+{% else %}
+  <p>No notifications yet.</p>
+{% endfor %}
+{% if pagination.has_prev %}<a href="{{ url_for('notifications.inbox', page=pagination.prev_num) }}">Previous</a>{% endif %}
+{% if pagination.has_next %}<a href="{{ url_for('notifications.inbox', page=pagination.next_num) }}">Next</a>{% endif %}
+{% endblock %}
