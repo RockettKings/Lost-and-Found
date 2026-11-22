@@ -2,7 +2,7 @@
 {% block title %}Review claims · Lost and Found{% endblock %}
 {% block content %}
 <h1>Claims for {{ item.title }}</h1>
-<p><a href="{{ url_for('pages.detail', post_id=item.id) }}">Back to item</a></p>
+<p><a href="{{ url_for('post_pages.detail', post_id=item.id) }}">Back to item</a></p>
 {% for claim in pagination.items %}
   <article class="card">
     <h2>Claim #{{ claim.id }} — {{ claim.claimant.display_name or ('User #' ~ claim.claimant_id) }}</h2>

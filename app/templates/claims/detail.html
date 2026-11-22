@@ -2,7 +2,7 @@
 {% block title %}Claim · Lost and Found{% endblock %}
 {% block content %}
 <h1>Claim #{{ claim.id }}</h1>
-<p>Item: <a href="{{ url_for('pages.detail', post_id=claim.item_id) }}">{{ claim.item.title }}</a></p>
+<p>Item: <a href="{{ url_for('post_pages.detail', post_id=claim.item_id) }}">{{ claim.item.title }}</a></p>
 <p>Submitted by {{ claim.claimant.public_name }}.</p>
 <p>Status: <strong>{{ claim.status|capitalize }}</strong></p>
 <dl>

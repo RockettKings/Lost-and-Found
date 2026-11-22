@@ -4,7 +4,7 @@
   <h1>Message</h1>
   <p>From {{ message.sender.public_name }} to {{ message.recipient.public_name }}</p>
   {% if message.item %}
-    <p>About <a href="{{ url_for('pages.detail', post_id=message.item.id) }}">{{ message.item.title }}</a></p>
+    <p>About <a href="{{ url_for('post_pages.detail', post_id=message.item.id) }}">{{ message.item.title }}</a></p>
   {% endif %}
   <p style="white-space: pre-wrap">{{ message.text }}</p>
   {% if can_reply %}

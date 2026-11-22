@@ -6,28 +6,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import Item, User
 from app.serializers import serialize_item
+from app.pagination import DEFAULT_PER_PAGE, MAX_PER_PAGE, positive_int
 
 profiles_bp = Blueprint("profiles", __name__, url_prefix="/api/profiles")
 
-DEFAULT_PER_PAGE = 10
-MAX_PER_PAGE = 50
-
 ## HELPER FUNCTIONS
-
-def _positive_int_arg(name, default):
-    """Retrieve a positive integer from the query parameters."""
-
-    raw_value = request.args.get(name)
-
-    if raw_value is None:
-        return default
-
-    try:
-        value = int(raw_value)
-    except ValueError:
-        return None
-
-    return value if value > 0 else None
 
 def _profile_stats(user_id):
     """Calculate the post statistics of a user."""
@@ -107,8 +90,8 @@ def get_profile(user_id):
         return jsonify(error="User not found."), 404
 
     # validate pagination paremeters
-    page = _positive_int_arg("page", 1) # default page 1
-    per_page = _positive_int_arg("per_page", DEFAULT_PER_PAGE)
+    page = positive_int(request.args.get("page"), 1) # default page 1
+    per_page = positive_int(request.args.get("per_page"), DEFAULT_PER_PAGE)
 
     if page is None or per_page is None:
         return jsonify(error="page and per_page must be positive integers."), 400

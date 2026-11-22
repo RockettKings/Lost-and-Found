@@ -10,6 +10,7 @@ from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Claim, Item
 from app.serializers import serialize_item
 from app.categories import CATEGORIES
+from app.pagination import DEFAULT_PER_PAGE, MAX_PER_PAGE, positive_int
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
@@ -22,9 +23,6 @@ TEXT_LIMITS = {
 }
 CREATE_REQUIRED = set(TEXT_LIMITS)
 ALLOWED_UPDATE_FIELDS = CREATE_REQUIRED | {"date_reported", "resolved"}
-
-DEFAULT_PER_PAGE = 10
-MAX_PER_PAGE = 50
 
 ## HELPER FUNCTIONS
 
@@ -163,21 +161,6 @@ def _viewer_id():
 def _serialize(item):
     return serialize_item(item, viewer_id=_viewer_id(), viewer_is_admin=_is_admin())
 
-def _positive_int_arg(name, default):
-    """Retrieve a positive integer from the query parameters."""
-
-    raw_value = request.args.get(name)
-
-    if raw_value is None:
-        return default
-
-    try:
-        value = int(raw_value)
-    except ValueError:
-        return None
-
-    return value if value > 0 else None
-
 ## POSTS FUNCTIONS
 
 @posts_bp.get("/")
@@ -185,8 +168,8 @@ def get_posts():
     """List posts. Supports q, category, listing_type, and sort query parameters."""
 
     # Pagination
-    page = _positive_int_arg("page", 1)
-    per_page = _positive_int_arg("per_page", DEFAULT_PER_PAGE)
+    page = positive_int(request.args.get("page"), 1)
+    per_page = positive_int(request.args.get("per_page"), DEFAULT_PER_PAGE)
     if page is None or per_page is None:
         return jsonify(error="page and per_page must be positive integers."), 400
     per_page = min(per_page, MAX_PER_PAGE)

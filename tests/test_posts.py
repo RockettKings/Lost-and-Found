@@ -111,7 +111,17 @@ def test_get_posts_empty_list(client, test_db):
     response = client.get("/api/posts/")
 
     assert response.status_code == 200
-    assert response.get_json() == {"posts": []}
+
+    data = response.get_json()
+    assert data["posts"] == []
+    assert data["pagination"] == {
+        "page": 1,
+        "per_page": 10,
+        "total": 0,
+        "pages": 0,
+        "has_next": False,
+        "has_prev": False
+    }
 
 
 def test_get_posts_with_filters(client, test_db):
@@ -204,6 +214,34 @@ def test_get_post_invalid_id(client, test_db):
 
     assert response.status_code == 404
 
+def test_posts_pagination(client, test_db):
+    user_id = _create_user(test_db, "student@example.edu")
+    for i in range(15):
+        _create_item(test_db, user_id, title=f"Item {i}")
+    _login_viewer(client, test_db)
+
+    response1 = client.get("/api/posts/?page=1&per_page=10")
+    assert response1.status_code == 200
+
+    data1 = response1.get_json()
+    pagination1 = data1["pagination"]
+    assert len(data1["posts"]) == 10
+    assert pagination1["total"] == 15
+    assert pagination1["pages"] == 2
+    assert pagination1["has_next"] is True
+
+    response2 = client.get("/api/posts/?page=2&per_page=10")
+    assert response2.status_code == 200
+
+    data2 = response2.get_json()
+    pagination2 = data2["pagination"]
+    assert len(data2["posts"]) == 5
+    assert pagination2["has_prev"] is True
+    assert pagination2["has_next"] is False
+
+    ids1 = {post["id"] for post in data1["posts"]}
+    ids2 = {post["id"] for post in data2["posts"]}
+    assert ids1.isdisjoint(ids2)
 
 # CREATE POST TESTS
 # -----------------
