@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Message inbox · Lost and Found{% endblock %}
+{% block content %}
+  <h1>Message inbox</h1>
+  {% if messages %}
+    <ul>
+      {% for message in messages %}
+        <li><a href="{{ url_for('messages.detail', message_id=message.id) }}">
+          From {{ message.sender.public_name }}{% if message.item %} about {{ message.item.title }}{% endif %} ·
+          {{ message.sent_at.strftime('%Y-%m-%d %H:%M UTC') }}
+        </a></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No messages yet.</p>
+  {% endif %}
+{% endblock %}

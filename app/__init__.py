@@ -56,6 +56,8 @@ def create_app(test_config=None):
 
     from app.auth.routes import auth_bp
     from app.claims.routes import claims_bp
+    from app.messages.routes import messages_bp
+    from app.notifications.routes import notifications_bp
     from app.pages.routes import pages_bp
     from app.posts.routes import posts_bp
     from app.profiles.pages import profile_pages_bp
@@ -64,6 +66,8 @@ def create_app(test_config=None):
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(claims_bp)
+    app.register_blueprint(messages_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(posts_bp)
     app.register_blueprint(profile_pages_bp)

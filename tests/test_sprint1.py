@@ -22,7 +22,7 @@ def item(test_db):
 
 
 def test_migrated_records_survive_restart(app, test_db, item):
-    assert set(inspect(test_db.engine).get_table_names()) == {"users", "items", "claims", "alembic_version"}
+    assert set(inspect(test_db.engine).get_table_names()) == {"users", "items", "claims", "messages", "notifications", "alembic_version"}
     item_id = item.id
     restarted = create_app(dict(app.config))
     with restarted.app_context():

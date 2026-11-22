@@ -1,0 +1,6 @@
+<form method="post">
+  {{ form.hidden_tag() }}
+  <p>{{ form.text.label }} {{ form.text(rows=5, maxlength=2000, required=true) }}</p>
+  {% for error in form.text.errors %}<p role="alert">{{ error }}</p>{% endfor %}
+  <button type="submit">Send message</button>
+</form>

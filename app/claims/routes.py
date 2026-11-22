@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.claims.forms import ClaimForm, QuestionsForm, ReviewForm
 from app.extensions import db
-from app.models import Claim, Item
+from app.models import Claim, Item, Notification
 
 claims_bp = Blueprint("claims", __name__)
 
@@ -115,6 +115,7 @@ def submit(item_id):
             supporting_details=form.supporting_details.data or None,
         )
         db.session.add(claim)
+        db.session.add(Notification(user_id=item.user_id, type="claim_submitted", claim=claim))
         db.session.commit()
         flash("Your claim has been submitted for review.", "success")
         return redirect(url_for("claims.mine"), code=303)
@@ -178,6 +179,21 @@ def review(claim_id):
     if result.rowcount != 1:
         db.session.rollback()
         abort(409, description="This claim has already been reviewed.")
+    db.session.add(Notification(user_id=claim.claimant_id,
+                                type=f"claim_{form.decision.data}", claim=claim))
     db.session.commit()
     flash("Claim approved." if form.decision.data == "approved" else "Claim denied.", "success")
     return redirect(url_for("claims.received", item_id=item.id), code=303)
+
+
+@claims_bp.get("/claims/<int:claim_id>")
+@login_required
+def detail(claim_id):
+    claim = db.get_or_404(Claim, claim_id)
+    if current_user.id not in (claim.claimant_id, claim.item.user_id):
+        abort(404)
+    is_poster = current_user.id == claim.item.user_id
+    can_approve = (claim.item.listing_type == "found" and not claim.item.resolved
+                   and not claim_exists(claim.item_id, "approved"))
+    return render_template("claims/detail.html", claim=claim, is_poster=is_poster,
+                           can_approve=can_approve, form=ReviewForm())
