@@ -9,6 +9,7 @@ from app.extensions import db
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
 from app.models import Claim, Item
 from app.serializers import serialize_item
+from app.categories import CATEGORIES
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
@@ -97,6 +98,12 @@ def _validate_item_data(data, partial=False, allow_empty=False):
         if cleaned["listing_type"] not in {"lost", "found"}:
             errors["listing_type"] = "Must be either 'lost' or 'found'."
             cleaned.pop("listing_type", None)
+
+    if "category" in cleaned:
+        cleaned["category"] = cleaned["category"].lower()
+        if cleaned["category"] not in CATEGORIES:
+            errors["category"] = "Choose a category from the list."
+            cleaned.pop("category", None)
 
     if "date_reported" in data:
         raw_date = data["date_reported"]
