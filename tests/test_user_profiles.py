@@ -18,41 +18,20 @@ def account(email, **fields):
     return user
 
 
-def test_profile_fields_keep_display_case_and_allow_maximum_lengths(test_db):
-    name = "A" * 80
-    user = account("one@example.edu", display_name=f"  {name}  ", bio="b" * 500)
-    test_db.session.add(user)
-    test_db.session.commit()
-    test_db.session.expire_all()
-    assert user.display_name == name
-    assert len(user.bio) == 500
+# Username rules (length, characters, case-insensitive uniqueness) are in test_usernames.py.
 
-
-@pytest.mark.parametrize("duplicate", ["Andrew", "andrew", "  ANDREW  "])
-def test_display_names_are_unique(test_db, duplicate):
-    test_db.session.add(account("one@example.edu", display_name="Andrew"))
-    test_db.session.commit()
-    test_db.session.add(account("two@example.edu", display_name=duplicate))
-    with pytest.raises(IntegrityError):
-        test_db.session.commit()
-    test_db.session.rollback()
-    assert len(test_db.session.execute(test_db.select(User)).scalars().all()) == 1
-
-
-def test_accounts_can_leave_profiles_unset(test_db):
-    first = account("one@example.edu")
-    second = account("two@example.edu", display_name=" \t ", bio="")
+def test_bio_allows_maximum_length_and_is_optional(test_db):
+    first = account("one@example.edu", username="first", bio="b" * 500)
+    second = account("two@example.edu", username="second")
     test_db.session.add_all([first, second])
     test_db.session.commit()
-    assert first.display_name is None and second.display_name is None
-    assert first.bio is None and second.bio == ""
+    test_db.session.expire_all()
+    assert len(first.bio) == 500
+    assert second.bio is None
 
 
-@pytest.mark.parametrize("values", [
-    {"display_name": "a" * 81}, {"bio": "b" * 501},
-])
-def test_database_rejects_oversized_profile_fields(test_db, values):
-    test_db.session.add(account("one@example.edu", **values))
+def test_database_rejects_oversized_bio(test_db):
+    test_db.session.add(account("one@example.edu", username="first", bio="b" * 501))
     with pytest.raises(IntegrityError):
         test_db.session.commit()
     test_db.session.rollback()
@@ -85,17 +64,19 @@ def test_profile_migration_preserves_existing_accounts_and_posts(tmp_path):
         assert user.email == "existing@example.edu"
         assert user.password_hash == password_hash
         assert user.check_password("existing password")
-        assert user.display_name is None and user.bio is None
+        # Migration 0008 gives existing accounts a username that reveals nothing private.
+        assert user.username == "user1" and user.bio is None
         assert db.session.get(Item, 1).user.id == user.id
         assert db.session.execute(text("PRAGMA foreign_key_check")).all() == []
-        user.display_name = "Andrew"
+        user.username = "Andrew"
         user.bio = "Student"
         db.session.commit()
         db.session.remove()
 
         # Reversing/reapplying removes only the new fields, preserving account data.
         downgrade(directory=MIGRATIONS, revision="0002")
-        assert "display_name" not in {column["name"] for column in inspect(db.engine).get_columns("users")}
+        columns = {column["name"] for column in inspect(db.engine).get_columns("users")}
+        assert not {"display_name", "bio", "username"} & columns
         assert db.session.execute(text("SELECT title FROM items WHERE user_id = 1")).scalar_one() == "Backpack"
         db.session.remove()
         upgrade(directory=MIGRATIONS)

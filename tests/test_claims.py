@@ -33,7 +33,7 @@ def found_item(test_db):
 
 def sign_in(client, name):
     client.post("/auth/logout")
-    response = client.post("/auth/login", data={"email": f"{name}@example.edu", "password": PASSWORD})
+    response = client.post("/auth/login", data={"identifier": f"{name}@example.edu", "password": PASSWORD})
     assert response.status_code == 302
 
 
@@ -355,7 +355,8 @@ def test_claim_migration_preserves_existing_profiles_and_posts(tmp_path):
         upgrade(directory=MIGRATIONS)
         item = db.session.get(Item, 1)
         assert item.ownership_questions is None and item.title == "Backpack"
-        assert item.user.display_name == "Person 1" and item.user.bio == "Student"
+        # The public name is now the username backfilled by migration 0008.
+        assert item.user.display_name == "user1" and item.user.bio == "Student"
         assert item.user.check_password(PASSWORD)
         db.session.add(Claim(item_id=1, claimant_id=2, ownership_answers=[]))
         db.session.commit()
@@ -363,7 +364,7 @@ def test_claim_migration_preserves_existing_profiles_and_posts(tmp_path):
         db.session.remove()
         downgrade(directory=MIGRATIONS, revision="0003")
         assert db.session.execute(text("SELECT title FROM items WHERE id = 1")).scalar_one() == "Backpack"
-        assert db.session.execute(text("SELECT display_name FROM users WHERE id = 1")).scalar_one() == "Person 1"
+        assert db.session.execute(text("SELECT bio FROM users WHERE id = 1")).scalar_one() == "Student"
         db.session.remove()
         upgrade(directory=MIGRATIONS)
         assert db.session.get(Item, 1).user.id == 1

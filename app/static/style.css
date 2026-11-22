@@ -70,6 +70,10 @@ main.container { padding-top: 1.5rem; padding-bottom: 3rem; }
 .nav-links form,
 .actions form { margin: 0; }
 
+#post-list-pagination {
+  margin-top: 1rem;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

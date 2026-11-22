@@ -42,6 +42,7 @@ def test_each_user_sees_only_their_own_resolved_posts(client, app, test_db):
 
 def test_history_entries_open_their_detail_pages(client, app, test_db):
     first_id, _ = _seed(client, app, test_db)
+    login(client, email=FIRST)
     [post] = client.get(f"/api/profiles/{first_id}?resolved=true").json["posts"]
     assert client.get(f"/posts/{post['id']}").status_code == 200
 
@@ -57,5 +58,6 @@ def test_history_requires_login_and_is_linked_from_your_profile(client, app, tes
 
 def test_resolved_filter_only_accepts_true(client, app, test_db):
     first_id, _ = _seed(client, app, test_db)
+    login(client, email=FIRST)
     assert client.get(f"/api/profiles/{first_id}?resolved=false").status_code == 400
     assert len(client.get(f"/api/profiles/{first_id}").json["posts"]) == 2

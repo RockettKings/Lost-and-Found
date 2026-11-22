@@ -70,9 +70,42 @@ function postCard(post) {
     </li>`;
 }
 
+function renderPostPagination(pager, pagination, params) {
+  if (!pager) return;
+  pager.replaceChildren();
+  if (!pagination || pagination.pages <= 1) return;
+
+  function addPageLink(page, label) {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set("page", String(page));
+
+    const link = document.createElement("a");
+    link.className = "button secondary";
+    link.href = `${window.location.pathname}?${pageParams.toString()}`;
+    link.textContent = label;
+
+    pager.append(link);
+  }
+
+  if (pagination.has_prev) {
+    addPageLink(pagination.page - 1, "Previous");
+  }
+
+  const pageLabel = document.createElement("span");
+  pageLabel.className = "muted";
+  pageLabel.textContent = `Page ${pagination.page} of ${pagination.pages}`;
+
+  pager.append(pageLabel);
+
+  if (pagination.has_next) {
+    addPageLink(pagination.page + 1, "Next");
+  }
+}
+
 async function loadPostList(params = new URLSearchParams()) {
   const list = document.querySelector("#post-list");
   const status = document.querySelector("#post-list-status");
+  const pager = document.querySelector("#post-list-pagination");
   if (!list) return;
 
   setStatus(status, "Loading posts…");
@@ -82,13 +115,16 @@ async function loadPostList(params = new URLSearchParams()) {
     const query = params.toString();
     const { data } = await apiRequest(`/api/posts/${query ? `?${query}` : ""}`);
     const posts = data.posts || [];
+    const pagination = data.pagination;
+    renderPostPagination(pager, pagination, params);  // display pagination controls
     if (!posts.length) {
       setStatus(status, "No matching posts.");
       return;
     }
     list.innerHTML = posts.map(postCard).join("");
-    setStatus(status, `${posts.length} post(s) found.`);
+    setStatus(status, `${pagination.total} post(s) found.`);
   } catch (error) {
+    if (pager) pager.replaceChildren();
     setStatus(status, error.message, true);
   }
 }
@@ -217,11 +253,16 @@ function detailMarkup(post) {
   const photo = post.photo_url
     ? `<img class="post-detail-photo" src="${escapeHtml(post.photo_url)}" alt="Photo of ${escapeHtml(post.title)}">`
     : "";
-  const ownerActions = post.is_owner ? `
-    <div class="actions">
+  const ownerButtons = post.is_owner ? `
       <a class="button secondary" href="/posts/${post.id}/edit">Edit</a>
-      ${post.resolved ? "" : '<button class="button" type="button" id="resolve-post">Mark resolved</button>'}
-      <button class="button danger" type="button" id="delete-post">Delete post</button>
+      ${post.resolved ? "" : '<button class="button" type="button" id="resolve-post">Mark resolved</button>'}` : "";
+  const deleteLabel = post.is_owner ? "Delete post" : "Delete post (admin)";
+  const deleteButton = post.can_delete
+    ? `<button class="button danger" type="button" id="delete-post">${deleteLabel}</button>`
+    : "";
+  const ownerActions = ownerButtons || deleteButton ? `
+    <div class="actions">${ownerButtons}
+      ${deleteButton}
     </div>` : "";
 
   return `
@@ -235,6 +276,7 @@ function detailMarkup(post) {
         <dt>Category</dt><dd>${escapeHtml(post.category)}</dd>
         <dt>Date reported</dt><dd>${escapeHtml(post.date_reported)}</dd>
         <dt>Location</dt><dd>${escapeHtml(post.general_location)}</dd>
+        <dt>Posted by</dt><dd><a href="/profiles/${Number(post.user_id)}">@${escapeHtml(post.author)}</a></dd>
       </dl>
       <p class="description">${escapeHtml(post.description)}</p>
       ${photo}

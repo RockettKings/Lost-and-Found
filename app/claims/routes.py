@@ -68,7 +68,7 @@ def questions(item_id):
             abort(409, description="The item changed. Refresh before editing its questions.")
         db.session.commit()
         flash("Ownership questions saved.", "success")
-        return redirect(url_for("pages.detail", post_id=item.id), code=303)
+        return redirect(url_for("post_pages.detail", post_id=item.id), code=303)
     return render_template("claims/questions.html", item=item, form=form, locked=locked), (400 if request.method == "POST" else 200)
 
 

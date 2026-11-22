@@ -22,6 +22,8 @@ def app(tmp_path):
         "S3_BUCKET": "test-bucket",
         # Most tests post forms directly; test_auth.py checks CSRF with it enabled.
         "WTF_CSRF_ENABLED": False,
+        # Tests make many requests quickly; test_limits_and_expiry.py turns limits back on.
+        "RATELIMIT_ENABLED": False,
     })
     with application.app_context():
         upgrade(directory=MIGRATIONS)

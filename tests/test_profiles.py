@@ -7,10 +7,10 @@ TEST_PASSWORD = "profile test password"
 
 ## HELPER FUNCTIONS
 
-def _create_user(test_db, email, display_name, bio=None):
+def _create_user(test_db, email, username, bio=None):
     """Create a user in the database and return their ID."""
 
-    user = User(email=email, display_name=display_name, bio=bio)
+    user = User(email=email, username=username, bio=bio)
     user.set_password(TEST_PASSWORD)
 
     test_db.session.add(user)
@@ -40,14 +40,21 @@ def _create_item(test_db, user_id, title="Backpack", listing_type="lost", resolv
 def _login(client, email):
     """Log in a user."""
 
-    response = client.post("/auth/login", data={"email": email, "password": TEST_PASSWORD})
+    response = client.post("/auth/login", data={"identifier": email, "password": TEST_PASSWORD})
     assert response.status_code == 302
+
+def _login_viewer(client, test_db):
+    """The login wall hides profiles from signed-out visitors, so view as another user."""
+
+    _create_user(test_db, "viewer@example.edu", "Viewer")
+    _login(client, "viewer@example.edu")
 
 ## GET TESTS
 
 def test_get_profile_success(client, test_db):
     """Ensure that a user can successfully retrieve a user profile."""
 
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     other_user_id = _create_user(test_db, "other@example.edu", "Other")
 
@@ -63,7 +70,7 @@ def test_get_profile_success(client, test_db):
     profile = data["profile"]
 
     assert profile["id"] == user_id
-    assert profile["display_name"] == "Student"
+    assert profile["username"] == profile["display_name"] == "Student"
     assert profile["bio"] is None
     assert profile["is_owner"] is False
     assert profile["stats"] == {
@@ -88,6 +95,7 @@ def test_get_profile_success(client, test_db):
     assert pagination["has_prev"] is False
 
 def test_private_information_kept_safe(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     response = client.get(f"/api/profiles/{user_id}")
     assert response.status_code == 200
@@ -96,12 +104,14 @@ def test_private_information_kept_safe(client, test_db):
     assert "email" not in profile
     assert "password_hash" not in profile
 
-def test_profile_not_found(client):
+def test_profile_not_found(client, test_db):
+    _login_viewer(client, test_db)
     response = client.get("/api/profiles/9999")
     assert response.status_code == 404
     assert response.get_json()["error"] == "User not found."
 
 def test_profile_without_posts(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     response = client.get(f"/api/profiles/{user_id}")
     assert response.status_code == 200
@@ -139,6 +149,7 @@ def test_get_other_users_profile(client, test_db):
     assert data["posts"][0]["is_owner"] is False
 
 def test_profile_pagination(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     for i in range(15):
         _create_item(test_db, user_id, title=f"Item {i}")
@@ -174,6 +185,7 @@ def test_profile_pagination(client, test_db):
     assert page1_ids.isdisjoint(page2_ids)
 
 def test_max_per_page(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
 
     items = [Item(
@@ -206,17 +218,20 @@ def test_max_per_page(client, test_db):
     "per_page=abc"
 ])
 def test_invalid_pagination(client, test_db, query):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     response = client.get(f"/api/profiles/{user_id}?{query}")
     assert response.status_code == 400
 
 def test_invalid_page(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     _create_item(test_db, user_id)
     response = client.get(f"/api/profiles/{user_id}?page=2")
     assert response.status_code == 404
 
 def test_profile_resolved_posts(client, test_db):
+    _login_viewer(client, test_db)
     user_id = _create_user(test_db, "student@example.edu", "Student")
     _create_item(test_db, user_id, "Backpack", "lost", resolved=False)
     _create_item(test_db, user_id, "Wallet", "found", resolved=True)
@@ -236,37 +251,22 @@ def test_login_required(client):
     assert response.status_code == 401
 
 def test_edit_profile_success(client, test_db):
-    user_id = _create_user(test_db, "student@example.edu", "Old name", "Old bio")
+    user_id = _create_user(test_db, "student@example.edu", "Student", "Old bio")
     _login(client, "student@example.edu")
-    response = client.patch(f"/api/profiles/me",
-                          json={"display_name": "New name", "bio": "New bio"})
+    response = client.patch(f"/api/profiles/me", json={"bio": "New bio"})
     assert response.status_code == 200
 
     profile = response.get_json()["profile"]
     assert profile["id"] == user_id
-    assert profile["display_name"] == "New name"
+    assert profile["username"] == "Student"
     assert profile["bio"] == "New bio"
     assert profile["is_owner"] is True
 
     # Verify changes are saved in the database
     test_db.session.expire_all()
     saved_user = test_db.session.get(User, user_id)
-    assert saved_user.display_name == "New name"
+    assert saved_user.username == "Student"
     assert saved_user.bio == "New bio"
-
-@pytest.mark.parametrize("data, expected_name, expected_bio", [
-    ({"display_name": "New name"}, "New name", "Old bio"),
-    ({"bio": "New bio"}, "Old name", "New bio")
-])
-def test_partial_update(client, test_db, data, expected_name, expected_bio):
-    _create_user(test_db, "student@example.edu", "Old name", "Old bio")
-    _login(client, "student@example.edu")
-    response = client.patch("/api/profiles/me", json=data)
-    assert response.status_code == 200
-
-    profile = response.get_json()["profile"]
-    assert profile["display_name"] == expected_name
-    assert profile["bio"] == expected_bio
 
 @pytest.mark.parametrize("bio", [None, "", "    "])
 def test_clear_bio(client, test_db, bio):
@@ -280,31 +280,19 @@ def test_clear_bio(client, test_db, bio):
     saved_user = test_db.session.get(User, user_id)
     assert saved_user.bio is None
 
-def test_duplicate_display_name(client, test_db):
-    _create_user(test_db, "first@example.edu", "John")
-    _create_user(test_db, "second@example.edu", "Smith")
-    _login(client, "second@example.edu")
-    response = client.patch("/api/profiles/me", json={"display_name": "john"})
-    assert response.status_code == 409
-    
-    assert "display_name" in response.get_json()["errors"]
-
-def test_keep_existing_display_name(client, test_db):
-    _create_user(test_db, "student@example.edu", "Student")
+@pytest.mark.parametrize("field", ["display_name", "username"])
+def test_names_change_only_on_the_change_username_page(client, test_db, field):
+    user_id = _create_user(test_db, "student@example.edu", "Student", "Old bio")
     _login(client, "student@example.edu")
-    response = client.patch("/api/profiles/me", json={"display_name": "Student"})
-    assert response.status_code == 200
-    assert response.get_json()["profile"]["display_name"] == "Student"
+    response = client.patch("/api/profiles/me", json={field: "Someone_else", "bio": "New bio"})
+    assert response.status_code == 400
+    assert "body" in response.get_json()["errors"]
+
+    test_db.session.expire_all()
+    saved_user = test_db.session.get(User, user_id)
+    assert (saved_user.username, saved_user.bio) == ("Student", "Old bio")
 
 ## VALIDATION TESTS
-
-@pytest.mark.parametrize("dname", [None, 123, "", "  ", "x"*81])
-def test_invalid_display_names(client, test_db, dname):
-    _create_user(test_db, "student@example.edu", "Student")
-    _login(client, "student@example.edu")
-    response = client.patch("/api/profiles/me", json={"display_name": dname})
-    assert response.status_code == 400
-    assert "display_name" in response.get_json()["errors"]
 
 @pytest.mark.parametrize("bio", [123, True, "x"*501])
 def test_invalid_bio_descriptions(client, test_db, bio):

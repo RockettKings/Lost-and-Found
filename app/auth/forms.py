@@ -1,8 +1,10 @@
 """Server-side validation for account forms. Flask-WTF also adds a CSRF token."""
 
+import re
+
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, EmailField, PasswordField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError
+from wtforms import BooleanField, EmailField, PasswordField, StringField
+from wtforms.validators import DataRequired, Email, EqualTo, Length, Regexp, ValidationError
 
 # A short blocklist of the most common passwords. Extend as needed.
 COMMON_PASSWORDS = {
@@ -12,11 +14,34 @@ COMMON_PASSWORDS = {
 }
 
 
+# Names that could be used to impersonate staff. Compared ignoring case.
+RESERVED_USERNAMES = {
+    "admin", "administrator", "moderator", "mod", "staff", "support", "help",
+    "system", "root", "official", "security", "lostandfound", "lost_and_found",
+}
+
+
 def _strip(value):
     return value.strip() if isinstance(value, str) else value
 
 
-class RegistrationForm(FlaskForm):
+class UsernameForm(FlaskForm):
+    """The username rules, shared by sign-up and the change-username page."""
+    username = StringField("Username", filters=[_strip], validators=[
+        DataRequired(),
+        Length(min=3, max=20, message="Username must be 3–20 characters."),
+        Regexp(r"^[A-Za-z0-9_]+$",
+               message="Username can only use letters, numbers, and underscores."),
+    ])
+
+    def validate_username(self, field):
+        name = field.data.lower()
+        # "user<number>" is reserved for accounts that existed before usernames.
+        if name in RESERVED_USERNAMES or re.fullmatch(r"user\d+", name):
+            raise ValidationError("That username is reserved. Choose another.")
+
+
+class RegistrationForm(UsernameForm):
     email = EmailField("Email", filters=[_strip], validators=[
         DataRequired(), Length(max=254), Email(check_deliverability=False),
     ])
@@ -34,10 +59,14 @@ class RegistrationForm(FlaskForm):
             raise ValidationError("That password is too common. Choose another.")
         if self.email.data and field.data.lower() == self.email.data.strip().lower():
             raise ValidationError("Password cannot be your email address.")
+        if self.username.data and field.data.lower() == self.username.data.strip().lower():
+            raise ValidationError("Password cannot be your username.")
 
 
 class LoginForm(FlaskForm):
-    email = EmailField("Email", filters=[_strip], validators=[DataRequired(), Length(max=254)])
+    # Accepts either an email address or a username.
+    identifier = StringField("Email or username", filters=[_strip],
+                             validators=[DataRequired(), Length(max=254)])
     password = PasswordField("Password", validators=[DataRequired(), Length(max=128)])
     remember = BooleanField("Keep me logged in")
 

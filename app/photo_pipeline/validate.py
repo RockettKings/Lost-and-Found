@@ -1,4 +1,5 @@
 import os
+import io
 
 from PIL import Image
 from pillow_heif import register_heif_opener
@@ -47,6 +48,7 @@ def path(image_path):
     try:
         image.load()  # full decode, so truncated files fail here
     except Exception:
+        image.close()
         return None
 
     return image
@@ -72,13 +74,37 @@ def check(image_path):
     if not small_enough:
         raise errors.too_large()
 
-    image = path(image_path)
+    # Validate a copy of uploaded files so PIL cannot close the original upload stream needed
+    validation_source = image_path
+    validation_stream = None
 
-    if image is None:
-        raise errors.not_an_image()
+    if not isinstance(image_path, (str, os.PathLike)):
+        try:
+            image_path.seek(0)
+            validation_stream = io.BytesIO(image_path.read())
+            image_path.seek(0)
+        except (OSError, ValueError):
+            raise errors.file_not_found()
 
-    if not format(image):
-        raise errors.unsupported_format(image.format)
+        validation_source = validation_stream
+
+    image = None
+
+    try:
+        image = path(validation_source)
+
+        if image is None:
+            raise errors.not_an_image()
+
+        if not format(image):
+            raise errors.unsupported_format(image.format)
+        
+    finally:
+        if image is not None:
+            image.close()
+
+        if validation_stream is not None:
+            validation_stream.close()
 
 
 # Input: a file path or an uploaded file object.
