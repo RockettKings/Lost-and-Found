@@ -24,5 +24,6 @@
 | Jaycob Campos | ML Lead / ML Engineer | Built the CNN, 5c | 5.5 |
 | Jaycob Campos | ML Lead / ML Engineer | Trained the CNN, 5c | 3.5 |
 | Nick Heyer    | Security | Admin role, Usernames, Rate Limiting, Auto-close, and Login Wall | 5.0 |
+| Khang Phan    | Backend Lead / Profiles Dev | Profiles backend | 2.0 |
 
-| **Total** | | | **21.0** |
+| **Total** | | | **23.0** |
