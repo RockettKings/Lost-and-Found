@@ -10,7 +10,7 @@ TEST_PASSWORD = "posts test password"
 def test_browser_post_request_requires_csrf_header(client, app):
     """Use the real form's meta token, just as posts.js does in the browser."""
     client.post("/auth/register", data={
-        "email": "browser@example.edu", "password": TEST_PASSWORD, "confirm": TEST_PASSWORD,
+        "username": "browser", "email": "browser@example.edu", "password": TEST_PASSWORD, "confirm": TEST_PASSWORD,
     })
     app.config["WTF_CSRF_ENABLED"] = True
     rejected = client.post("/api/posts/", json=_valid_post_data())
@@ -37,7 +37,7 @@ def test_unknown_api_route_returns_json(client):
 
 def _create_user(test_db, email):
     """Create a user in the database and return their ID."""
-    user = User(email=email)
+    user = User(email=email, username=email.split("@")[0])
     user.set_password(TEST_PASSWORD)
 
     test_db.session.add(user)
@@ -77,10 +77,16 @@ def _login(client, email):
     """Log in a user."""
     response = client.post(
         "/auth/login",
-        data={"email": email, "password": TEST_PASSWORD},
+        data={"identifier": email, "password": TEST_PASSWORD},
     )
 
     assert response.status_code == 302
+
+
+def _login_viewer(client, test_db):
+    """Log in a separate account just to browse; the site requires login to view posts."""
+    _create_user(test_db, "viewer@example.edu")
+    _login(client, "viewer@example.edu")
 
 
 def _valid_post_data():
@@ -99,8 +105,9 @@ def _valid_post_data():
 # GET POST TESTS
 # --------------
 
-def test_get_posts_empty_list(client):
+def test_get_posts_empty_list(client, test_db):
     """Test GET /api/posts/ with an empty database."""
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/")
 
     assert response.status_code == 200
@@ -125,6 +132,7 @@ def test_get_posts_with_filters(client, test_db):
         listing_type="found",
     )
 
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/?category=bags&listing_type=LOST")
 
     assert response.status_code == 200
@@ -150,6 +158,7 @@ def test_get_posts_with_keyword_search(client, test_db):
         description="Silver laptop found in the lab",
     )
 
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/?q=LIBRARY")
 
     assert response.status_code == 200
@@ -159,13 +168,15 @@ def test_get_posts_with_keyword_search(client, test_db):
     assert posts[0]["title"] == "Backpack"
 
 
-def test_get_posts_reject_invalid_listing_type(client):
+def test_get_posts_reject_invalid_listing_type(client, test_db):
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/?listing_type=other")
 
     assert response.status_code == 400
 
 
-def test_get_posts_reject_invalid_sort(client):
+def test_get_posts_reject_invalid_sort(client, test_db):
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/?sort=random")
 
     assert response.status_code == 400
@@ -175,6 +186,7 @@ def test_get_post_returns_existing_post(client, test_db):
     user_id = _create_user(test_db, "student@example.edu")
     post_id = _create_item(test_db, user_id)
 
+    _login_viewer(client, test_db)
     response = client.get(f"/api/posts/{post_id}")
 
     assert response.status_code == 200
@@ -186,7 +198,8 @@ def test_get_post_returns_existing_post(client, test_db):
     assert post["photo_url"] is None
 
 
-def test_get_post_invalid_id(client):
+def test_get_post_invalid_id(client, test_db):
+    _login_viewer(client, test_db)
     response = client.get("/api/posts/9999")
 
     assert response.status_code == 404
@@ -394,3 +407,132 @@ def test_delete_post_forbids_non_owner(client, test_db):
     test_db.session.expire_all()
 
     assert test_db.session.get(Item, post_id) is not None
+
+
+# ADMIN
+# -----
+
+def _make_admin(test_db, user_id):
+    user = test_db.session.get(User, user_id)
+    user.is_admin = True
+    test_db.session.commit()
+
+
+def test_admin_can_delete_any_post(client, test_db):
+    owner_id = _create_user(test_db, "student@example.edu")
+    admin_id = _create_user(test_db, "admin@example.edu")
+    _make_admin(test_db, admin_id)
+    post_id = _create_item(test_db, owner_id)
+
+    _login(client, "admin@example.edu")
+    detail = client.get(f"/api/posts/{post_id}").get_json()["post"]
+    assert detail["is_owner"] is False
+    assert detail["can_delete"] is True
+
+    response = client.delete(f"/api/posts/{post_id}")
+
+    assert response.status_code == 204
+    test_db.session.expire_all()
+    assert test_db.session.get(Item, post_id) is None
+
+
+def test_admin_cannot_edit_others_post(client, test_db):
+    owner_id = _create_user(test_db, "student@example.edu")
+    admin_id = _create_user(test_db, "admin@example.edu")
+    _make_admin(test_db, admin_id)
+    post_id = _create_item(test_db, owner_id)
+
+    _login(client, "admin@example.edu")
+    response = client.patch(f"/api/posts/{post_id}", json={"title": "Changed"})
+
+    assert response.status_code == 403
+
+
+def test_non_admin_cannot_delete_flag(client, test_db):
+    owner_id = _create_user(test_db, "student@example.edu")
+    _create_user(test_db, "other@example.edu")
+    post_id = _create_item(test_db, owner_id)
+
+    _login(client, "other@example.edu")
+    detail = client.get(f"/api/posts/{post_id}").get_json()["post"]
+
+    assert detail["can_delete"] is False
+
+
+def test_make_admin_command(app, test_db):
+    user_id = _create_user(test_db, "student@example.edu")
+    runner = app.test_cli_runner()
+
+    result = runner.invoke(args=["make-admin", "Student@Example.edu"])
+    assert result.exit_code == 0
+    test_db.session.expire_all()
+    assert test_db.session.get(User, user_id).is_admin is True
+
+    result = runner.invoke(args=["remove-admin", "student@example.edu"])
+    assert result.exit_code == 0
+    test_db.session.expire_all()
+    assert test_db.session.get(User, user_id).is_admin is False
+
+    result = runner.invoke(args=["make-admin", "nobody@example.edu"])
+    assert result.exit_code != 0
+
+
+def test_admin_migration_runs_with_existing_posts(app, test_db):
+    """Adding is_admin must not fail when posts already reference users."""
+    from flask_migrate import downgrade, upgrade
+    from tests.conftest import MIGRATIONS
+
+    downgrade(directory=MIGRATIONS, revision="notifications")
+    test_db.session.execute(test_db.text(
+        "INSERT INTO users (id, email, password_hash, created_at) "
+        "VALUES (1, 'a@example.edu', 'x', '2026-01-01')"))
+    test_db.session.execute(test_db.text(
+        "INSERT INTO items (user_id, title, description, category, listing_type, "
+        "general_location, date_reported, created_at) "
+        "VALUES (1, 't', 'd', 'c', 'lost', 'l', '2026-01-01', '2026-01-01')"))
+    test_db.session.commit()
+
+    upgrade(directory=MIGRATIONS)
+
+    assert test_db.session.get(User, 1).is_admin is False
+    assert test_db.session.query(Item).count() == 1
+
+
+def test_category_filter_ignores_case(client, test_db):
+    user_id = _create_user(test_db, "student@example.edu")
+    _create_item(test_db, user_id, category="Bags")
+    _create_item(test_db, user_id, title="Keys", category="Keys")
+
+    _login_viewer(client, test_db)
+    for typed in ("bags", "Bags", "BAGS"):
+        posts = client.get(f"/api/posts/?category={typed}").get_json()["posts"]
+        assert [post["category"] for post in posts] == ["Bags"]
+
+
+def test_logged_out_visitors_cannot_read_posts(client, test_db):
+    post_id = _create_item(test_db, _create_user(test_db, "student@example.edu"))
+
+    for url in ("/api/posts/", f"/api/posts/{post_id}"):
+        response = client.get(url)
+        assert response.status_code == 401
+        assert b"Backpack" not in response.data
+
+    for url, expected in [("/", "/auth/login"), (f"/posts/{post_id}", f"/auth/login?next=/posts/{post_id}")]:
+        response = client.get(url)
+        assert response.status_code == 302
+        assert response.headers["Location"] == expected
+
+
+def test_login_and_signup_pages_stay_public(client):
+    assert client.get("/auth/login").status_code == 200
+    assert client.get("/auth/register").status_code == 200
+    assert client.get("/healthz").status_code == 200
+
+
+def test_login_returns_to_requested_post(client, test_db):
+    post_id = _create_item(test_db, _create_user(test_db, "student@example.edu"))
+    location = client.get(f"/posts/{post_id}").headers["Location"]
+
+    response = client.post(location, data={"identifier": "student@example.edu", "password": TEST_PASSWORD})
+
+    assert response.headers["Location"] == f"/posts/{post_id}"

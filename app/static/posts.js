@@ -217,11 +217,16 @@ function detailMarkup(post) {
   const photo = post.photo_url
     ? `<img class="post-detail-photo" src="${escapeHtml(post.photo_url)}" alt="Photo of ${escapeHtml(post.title)}">`
     : "";
-  const ownerActions = post.is_owner ? `
-    <div class="actions">
+  const ownerButtons = post.is_owner ? `
       <a class="button secondary" href="/posts/${post.id}/edit">Edit</a>
-      ${post.resolved ? "" : '<button class="button" type="button" id="resolve-post">Mark resolved</button>'}
-      <button class="button danger" type="button" id="delete-post">Delete post</button>
+      ${post.resolved ? "" : '<button class="button" type="button" id="resolve-post">Mark resolved</button>'}` : "";
+  const deleteLabel = post.is_owner ? "Delete post" : "Delete post (admin)";
+  const deleteButton = post.can_delete
+    ? `<button class="button danger" type="button" id="delete-post">${deleteLabel}</button>`
+    : "";
+  const ownerActions = ownerButtons || deleteButton ? `
+    <div class="actions">${ownerButtons}
+      ${deleteButton}
     </div>` : "";
 
   return `
@@ -235,6 +240,7 @@ function detailMarkup(post) {
         <dt>Category</dt><dd>${escapeHtml(post.category)}</dd>
         <dt>Date reported</dt><dd>${escapeHtml(post.date_reported)}</dd>
         <dt>Location</dt><dd>${escapeHtml(post.general_location)}</dd>
+        <dt>Posted by</dt><dd><a href="/profiles/${Number(post.user_id)}">@${escapeHtml(post.author)}</a></dd>
       </dl>
       <p class="description">${escapeHtml(post.description)}</p>
       ${photo}

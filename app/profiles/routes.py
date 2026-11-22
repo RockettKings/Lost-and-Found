@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
 from sqlalchemy import case, func
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Item, User
@@ -46,6 +46,7 @@ def _serialize_profile(user, stats, viewer_id=None):
 
     return {
         "id": user.id,
+        "username": user.display_name,
         "display_name": user.display_name,
         "bio": user.bio,
         "created_at": user.created_at.isoformat() + "Z",
@@ -67,7 +68,8 @@ def _validate_profile_data(data):
     errors = {}
     cleaned = {}
 
-    allowed_fields = {"display_name", "bio"}
+    # The username is changed on the change-username page, which applies its rules.
+    allowed_fields = {"bio"}
 
     unexpected = set(data) - allowed_fields
     if unexpected:
@@ -75,22 +77,6 @@ def _validate_profile_data(data):
 
     if not data:
         errors["body"] = "At least one field must be provided."
-
-    # Validate display name
-    if "display_name" in data:
-        value = data["display_name"]
-
-        if not isinstance(value, str):
-            errors["display_name"] = "display name must be a string."
-        else:
-            value = value.strip()
-
-            if not value:
-                errors["display_name"] = "Display name cannot be empty."
-            elif len(value) > 80:
-                errors["display_name"] = "Display name cannot exceed 80 characters."
-            else:
-                cleaned["display_name"] = value
 
     # Validate bio
     if "bio" in data:
@@ -191,26 +177,12 @@ def edit_profile():
 
     user = current_user._get_current_object()
 
-    # Check whether requested display name is already taken
-    if "display_name" in cleaned:
-        duplicate_user = db.session.execute(
-            db.select(User.id)
-            .where(User.display_name == cleaned["display_name"], User.id != user.id)
-        ).scalar_one_or_none()
-
-        if duplicate_user is not None:
-            return jsonify(errors={"display_name": "That name is already in use."}), 409
-
     for field, value in cleaned.items():
         setattr(user, field, value)
 
     # Commit changes to database
     try:
         db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        current_app.logger.warning("Profile update conflicted with a database constraint.")
-        return jsonify(errors={"display_name": "That name is already in use."}), 409
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception("Profile database error.")

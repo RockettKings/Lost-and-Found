@@ -4,7 +4,6 @@
   <section id="post-detail" data-post-id="{{ post_id }}">
     <p class="status-message" role="status" aria-live="polite">Loading post…</p>
   </section>
-  <p class="meta">Posted by <a href="{{ url_for('profile_pages.view', user_id=item.user_id) }}">{{ item.user.public_name }}</a></p>
   {% if current_user.is_authenticated and current_user.id != item.user_id %}
     <a class="button" href="{{ url_for('messages.compose', item_id=item.id) }}">Message the poster</a>
   {% endif %}

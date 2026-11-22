@@ -34,7 +34,7 @@ def accounts(app):
 def sign_in(app, name):
     client = app.test_client()
     response = client.post("/auth/login", data={
-        "email": f"{name}@example.edu", "password": PASSWORD,
+        "identifier": f"{name}@example.edu", "password": PASSWORD,
     })
     assert response.status_code == 302
     return client

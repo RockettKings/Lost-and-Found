@@ -3,14 +3,10 @@
 {% block scripts %}<script src="{{ url_for('static', filename='profiles.js') }}" defer></script>{% endblock %}
 {% block content %}
 <div class="card narrow">
-  <h1>Edit profile</h1>
-  <p class="meta">Other users see your display name instead of your email.</p>
+  <h1>Edit bio</h1>
+  <p class="meta">Other users see your username, <strong>@{{ user.display_name }}</strong>, instead of your email.
+    <a href="{{ url_for('auth.change_username') }}">Change username</a></p>
   <form id="profile-form" novalidate>
-    <div class="field">
-      <label for="display_name">Display name</label>
-      <input id="display_name" name="display_name" maxlength="80" value="{{ user.display_name or '' }}">
-      <small class="field-error" data-error-for="display_name"></small>
-    </div>
     <div class="field">
       <label for="bio">Bio (optional)</label>
       <textarea id="bio" name="bio" maxlength="500" rows="4">{{ user.bio or '' }}</textarea>

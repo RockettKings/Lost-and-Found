@@ -3,7 +3,7 @@
 // Uses apiRequest, escapeHtml, setStatus, renderFieldErrors, and postCard from posts.js.
 
 function profileName(profile) {
-  return profile.display_name || `User #${profile.id}`;
+  return `@${profile.username}`;
 }
 
 function pageLink(page, label) {
@@ -77,10 +77,7 @@ function setupProfileForm() {
     renderFieldErrors(form);
     setStatus(status, "Saving…");
 
-    // The API rejects a blank name, so leave it out to keep the current one unset.
     const payload = { bio: form.elements.bio.value };
-    const name = form.elements.display_name.value.trim();
-    if (name) payload.display_name = name;
 
     try {
       await apiRequest("/api/profiles/me", {

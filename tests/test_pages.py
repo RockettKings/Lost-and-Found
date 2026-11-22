@@ -18,6 +18,14 @@ def _account(client, app, email="student@example.edu"):
         return db.session.execute(db.select(User).filter_by(email=email)).scalar_one().id
 
 
+def _view_as_another_user(client, app, email="viewer@example.edu"):
+    # The login wall hides every page from signed-out visitors, so check privacy
+    # from a different signed-in account instead.
+    client.post("/auth/logout")
+    if login(client, email=email).status_code != 302:
+        _account(client, app, email=email)
+
+
 def _item(test_db, user_id, **overrides):
     fields = {
         "title": "Blue backpack", "description": "Lost near the library",
@@ -42,6 +50,7 @@ def _form(title="Lost wallet", **overrides):
 
 
 def test_home_loads_assets_and_listing_data(client, app, test_db):
+    _view_as_another_user(client, app)
     page = client.get("/")
     assert page.status_code == 200
     assert b'id="post-list"' in page.data
@@ -53,8 +62,9 @@ def test_home_loads_assets_and_listing_data(client, app, test_db):
         assert client.get(asset).status_code == 200
     assert client.get("/api/posts/").json == {"posts": []}
 
-    user_id = _account(client, app)
     client.post("/auth/logout")
+    user_id = _account(client, app)
+    _view_as_another_user(client, app)
     first = _item(test_db, user_id, date_reported=date(2026, 1, 1))
     second = _item(test_db, user_id, title="Silver laptop", listing_type="found",
                    category="electronics", date_reported=date(2026, 6, 1))
@@ -70,7 +80,7 @@ def test_home_loads_assets_and_listing_data(client, app, test_db):
 
 def test_search_filter_and_sort(client, app, test_db):
     user_id = _account(client, app)
-    client.post("/auth/logout")
+    _view_as_another_user(client, app)
     _item(test_db, user_id, date_reported=date(2026, 1, 1))
     _item(test_db, user_id, title="Silver laptop", description="Found in the lab",
           category="electronics", listing_type="found", date_reported=date(2026, 6, 1))
@@ -92,7 +102,7 @@ def test_search_filter_and_sort(client, app, test_db):
 
 def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, monkeypatch):
     user_id = _account(client, app)
-    client.post("/auth/logout")
+    _view_as_another_user(client, app)
     item = _item(test_db, user_id, photo_key="items/" + "ab" * 16 + ".jpg")
     monkeypatch.setattr("app.serializers.get_photo", lambda key: "https://photos.example/backpack.jpg")
 

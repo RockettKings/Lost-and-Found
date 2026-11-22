@@ -11,8 +11,9 @@ def _photo_url(item):
         current_app.logger.exception("Could not generate a post photo URL.")
         return None
 
-def serialize_item(item, viewer_id=None):
+def serialize_item(item, viewer_id=None, viewer_is_admin=False):
     """Serialize a post without exposing private user information."""
+    is_owner = bool(viewer_id is not None and item.user_id == viewer_id)
     return {
         "id": item.id,
         "user_id": item.user_id,
@@ -25,5 +26,8 @@ def serialize_item(item, viewer_id=None):
         "created_at": item.created_at.isoformat() + "Z",
         "resolved": bool(item.resolved),
         "photo_url": _photo_url(item),
-        "is_owner": bool(viewer_id is not None and item.user_id == viewer_id)
+        "author": item.user.display_name,
+        "is_owner": is_owner,
+        # Admins may delete any post, but editing stays owner-only.
+        "can_delete": is_owner or viewer_is_admin,
     }

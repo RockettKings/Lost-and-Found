@@ -18,22 +18,23 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
     __table_args__ = (
         db.CheckConstraint("length(email) BETWEEN 3 AND 254", name="email_length"),
-        db.CheckConstraint(
-            "display_name IS NULL OR (length(display_name) BETWEEN 1 AND 80 "
-            "AND display_name = trim(display_name))", name="display_name_length",
-        ),
         db.CheckConstraint("bio IS NULL OR length(bio) <= 500", name="bio_length"),
-        db.Index("uq_users_display_name", "display_name", unique=True),
+        db.Index("uq_users_username_lower", db.text("lower(username)"), unique=True),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(254), unique=True, nullable=False)
-    # Optional for existing accounts. SQLite NOCASE compares ASCII letters without case.
-    display_name = db.Column(db.String(80, collation="NOCASE"), nullable=True)
+    # The one public name. Stored as typed ("Nick_H") but unique ignoring case, so
+    # nobody can register "nick_h" to imitate it; the database index enforces this.
+    username = db.Column(db.String(20))
+    # Migration 0003's display_name column is left in the table but unused: dropping it
+    # needs a users rebuild, which SQLite refuses while items reference users.
     bio = db.Column(db.String(500), nullable=True)
     # D's account code supplies a Werkzeug hash, never a plaintext password.
     password_hash = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    # Only granted from the terminal (`flask make-admin`), never through a web form.
+    is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("0"))
     items = db.relationship("Item", back_populates="user", passive_deletes="all")
     claims = db.relationship("Claim", back_populates="claimant", passive_deletes="all")
 
@@ -41,19 +42,14 @@ class User(UserMixin, db.Model):
     def normalize_email(self, _field, email):
         return email.strip().lower()
 
-    @validates("display_name")
-    def normalize_display_name(self, _field, name):
-        if name is None:
-            return None
-        if not isinstance(name, str):
-            raise ValueError("Display name must be text.")
-        # Blank names stay unset, allowing multiple accounts to finish profiles later.
-        return name.strip() or None
-
     @property
-    def public_name(self):
-        """The name shown to other users. Never fall back to the email."""
-        return self.display_name or f"User #{self.id}"
+    def display_name(self):
+        # Accounts made before usernames existed are backfilled by migration 0008;
+        # this fallback only covers rows inserted directly (e.g. in tests).
+        return self.username or f"user{self.id}"
+
+    # Older templates use this name; it never falls back to the email.
+    public_name = display_name
 
     def set_password(self, password):
         # Werkzeug's default is salted scrypt; only the hash is ever stored.

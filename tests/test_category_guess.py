@@ -25,7 +25,7 @@ def _jpeg_bytes(colour="blue", size=(64, 64)):
 
 def _account(client, email="guesser@example.edu"):
     client.post("/auth/register", data={
-        "email": email, "password": GOOD_PASSWORD, "confirm": GOOD_PASSWORD,
+        "username": email.split("@")[0], "email": email, "password": GOOD_PASSWORD, "confirm": GOOD_PASSWORD,
     }, follow_redirects=True)
 
 
