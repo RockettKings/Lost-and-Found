@@ -293,3 +293,49 @@ document.addEventListener("DOMContentLoaded", () => {
   setupPostForm();
   setupPostDetail();
 });
+
+// Req 5f (Jaycob): when a photo is chosen, ask the model for a category and
+// prefill the field if it is confident enough. Appended below Khang's code;
+// nothing above this line is changed. A second DOMContentLoaded listener is
+// fine - they both run.
+//
+// The guess never blocks posting: a low-confidence guess, a model failure or a
+// slow response all leave the field exactly as the poster left it, and the
+// field stays editable throughout (Req 11).
+async function setupCategoryGuess() {
+  const form = document.querySelector("#post-form");
+  const photoInput = form?.querySelector("#photo");
+  const categoryInput = form?.querySelector("#category");
+  if (!form || !photoInput || !categoryInput) return;
+
+  const status = form.querySelector("#post-form-status");
+
+  photoInput.addEventListener("change", async () => {
+    const file = photoInput.files?.[0];
+    if (!file) return;
+
+    // Never overwrite something the poster typed themselves.
+    if (categoryInput.value.trim()) return;
+
+    const body = new FormData();
+    body.append("photo", file);
+
+    setStatus(status, "Looking at the photo…");
+    try {
+      const { data } = await apiRequest("/api/posts/category-guess", { method: "POST", body });
+      if (data.category && !categoryInput.value.trim()) {
+        categoryInput.value = data.category;
+        setStatus(status, "Category guessed from the photo. Change it if it is wrong.");
+      } else {
+        setStatus(status, "");
+      }
+    } catch (error) {
+      // A failed guess is not a posting error, so it is not shown as one.
+      setStatus(status, "");
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupCategoryGuess();
+});

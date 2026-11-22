@@ -88,7 +88,8 @@ def _valid_post_data():
     return {
         "title": "Lost wallet",
         "description": "Black leather wallet",
-        "category": "Accessories",
+        # Mixed case on purpose: Req 11 lowercases before checking the 5a list.
+        "category": "Wallet",
         "listing_type": "lost",
         "general_location": "Cafeteria",
         "date_reported": "2026-11-08",
