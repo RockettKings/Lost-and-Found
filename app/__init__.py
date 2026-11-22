@@ -148,6 +148,12 @@ def create_app(test_config=None):
             return jsonify(error="You are not allowed to perform this action."), 403
         return render_template("403.html"), 403
 
+    @app.errorhandler(500)
+    def internal_server_error(_error):
+        if request.path.startswith("/api/"):
+            return jsonify(error="An unexpected server error occurred."), 500
+        return render_template("500.html"), 500
+
     @app.get("/healthz")
     def health():
         """Deployment readiness check; exposes no users, posts, or credentials."""

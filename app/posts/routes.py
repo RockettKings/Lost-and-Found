@@ -23,6 +23,9 @@ TEXT_LIMITS = {
 CREATE_REQUIRED = set(TEXT_LIMITS)
 ALLOWED_UPDATE_FIELDS = CREATE_REQUIRED | {"date_reported", "resolved"}
 
+DEFAULT_PER_PAGE = 10
+MAX_PER_PAGE = 50
+
 ## HELPER FUNCTIONS
 
 def _discard_photo(photo_key):
@@ -160,15 +163,38 @@ def _viewer_id():
 def _serialize(item):
     return serialize_item(item, viewer_id=_viewer_id(), viewer_is_admin=_is_admin())
 
+def _positive_int_arg(name, default):
+    """Retrieve a positive integer from the query parameters."""
+
+    raw_value = request.args.get(name)
+
+    if raw_value is None:
+        return default
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None
+
+    return value if value > 0 else None
+
 ## POSTS FUNCTIONS
 
 @posts_bp.get("/")
 def get_posts():
     """List posts. Supports q, category, listing_type, and sort query parameters."""
+
+    # Pagination
+    page = _positive_int_arg("page", 1)
+    per_page = _positive_int_arg("per_page", DEFAULT_PER_PAGE)
+    if page is None or per_page is None:
+        return jsonify(error="page and per_page must be positive integers."), 400
+    per_page = min(per_page, MAX_PER_PAGE)
+
     statement = db.select(Item)
 
     query = (request.args.get("q") or "").strip()
-    category = (request.args.get("category") or "").strip()
+    category = (request.args.get("category") or "").strip().lower()
     listing_type = (request.args.get("listing_type") or "").strip().lower()
     sort = (request.args.get("sort") or "newest").strip().lower()
 
@@ -192,10 +218,25 @@ def get_posts():
         statement = statement.where(Item.listing_type == listing_type)
 
     order = Item.date_reported.desc() if sort == "newest" else Item.date_reported.asc()
-    statement = statement.order_by(order, Item.created_at.desc())
+    statement = statement.order_by(order, Item.created_at.desc(), Item.id.desc())
 
-    items = db.session.execute(statement).scalars().all()
-    return jsonify(posts=[_serialize(item) for item in items]), 200
+    pagination = db.paginate(
+        statement,
+        page=page,
+        per_page=per_page,
+        max_per_page=MAX_PER_PAGE,
+        error_out=True
+    )
+
+    return jsonify(posts=[_serialize(item) for item in pagination.items],
+                   pagination={
+                       "page": pagination.page,
+                       "per_page": pagination.per_page,
+                       "total": pagination.total,
+                       "pages": pagination.pages,
+                       "has_next": pagination.has_next,
+                       "has_prev": pagination.has_prev
+                   }), 200
 
 @posts_bp.get("/<int:post_id>")
 def get_post(post_id):

@@ -47,6 +47,7 @@ def path(image_path):
     try:
         image.load()  # full decode, so truncated files fail here
     except Exception:
+        image.close()
         return None
 
     return image
@@ -77,8 +78,11 @@ def check(image_path):
     if image is None:
         raise errors.not_an_image()
 
-    if not format(image):
-        raise errors.unsupported_format(image.format)
+    try:
+        if not format(image):
+            raise errors.unsupported_format(image.format)
+    finally:
+        image.close()
 
 
 # Input: a file path or an uploaded file object.

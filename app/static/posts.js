@@ -70,9 +70,42 @@ function postCard(post) {
     </li>`;
 }
 
+function renderPostPagination(pager, pagination, params) {
+  if (!pager) return;
+  pager.replaceChildren();
+  if (!pagination || pagination.pages <= 1) return;
+
+  function addPageLink(page, label) {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set("page", String(page));
+
+    const link = document.createElement("a");
+    link.className = "button secondary";
+    link.href = `${window.location.pathname}?${pageParams.toString()}`;
+    link.textContent = label;
+
+    pager.append(link);
+  }
+
+  if (pagination.has_prev) {
+    addPageLink(pagination.page - 1, "Previous");
+  }
+
+  const pageLabel = document.createElement("span");
+  pageLabel.className = "muted";
+  pageLabel.textContent = `Page ${pagination.page} of ${pagination.pages}`;
+
+  pager.append(pageLabel);
+
+  if (pagination.has_next) {
+    addPageLink(pagination.page + 1, "Next");
+  }
+}
+
 async function loadPostList(params = new URLSearchParams()) {
   const list = document.querySelector("#post-list");
   const status = document.querySelector("#post-list-status");
+  const pager = document.querySelector("#post-list-pagination");
   if (!list) return;
 
   setStatus(status, "Loading posts…");
@@ -82,13 +115,16 @@ async function loadPostList(params = new URLSearchParams()) {
     const query = params.toString();
     const { data } = await apiRequest(`/api/posts/${query ? `?${query}` : ""}`);
     const posts = data.posts || [];
+    const pagination = data.pagination;
+    renderPostPagination(pager, pagination, params);  // display pagination controls
     if (!posts.length) {
       setStatus(status, "No matching posts.");
       return;
     }
     list.innerHTML = posts.map(postCard).join("");
-    setStatus(status, `${posts.length} post(s) found.`);
+    setStatus(status, `${pagination.total} post(s) found.`);
   } catch (error) {
+    if (pager) pager.replaceChildren();
     setStatus(status, error.message, true);
   }
 }
