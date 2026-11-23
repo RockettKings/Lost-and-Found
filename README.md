@@ -14,6 +14,10 @@ schedule in [documents/sprint-plan.md](documents/sprint-plan.md), and what count
 as done for each Sprint 2 requirement in
 [documents/sprint-2-requirements.md](documents/sprint-2-requirements.md).
 
+## Team
+
+Jaycob Campos, Khang Phan, Andrew Kruckemyer, Nick Heyer, Jonathan Kazmaier, Lydia Peng
+
 ## Setup
 
 Everything below runs from the project directory.
@@ -97,7 +101,7 @@ template; never commit your own `.env`.
 ## Running the tests
 
 ```sh
-python -m pytest              # 101 tests
+python -m pytest              # 264 tests
 python -m pytest -q tests/test_category_guess.py
 ```
 
@@ -123,28 +127,50 @@ The guess is always a suggestion. The poster can change it, and the category
 they submit is the one saved. A low-confidence guess, an unreadable photo, or a
 missing weights file all leave the field blank rather than blocking the post.
 
-The served checkpoint scores 81.1% on the held-out test split. The accuracy
-floors, the confidence threshold, and what swapping in a different checkpoint
-requires are recorded in
-[documents/model-decisions.md](documents/model-decisions.md). The training
-pipeline is `cnn.py` and `data_pipeline.py` at the project root, which read a
-labeled dataset that is deliberately not in the repository.
+The model code reports 81.1% accuracy on the held-out test split. The experiment
+logs and model decision documents are not present in this checkout, so that
+accuracy has not been independently verified here. The training pipeline is
+`cnn.py` and `data_pipeline.py` at the project root, which read a labeled dataset
+that is deliberately not in the repository.
 
 ## Project layout
 
 | Path | What is there |
 | --- | --- |
 | `app/__init__.py` | App factory, configuration, error handlers, `/` and `/healthz` |
-| `app/models.py` | `User` and `Item` tables |
+| `app/models.py` | Users, items, claims, messages, and notifications |
 | `app/auth/` | Register, log in, log out |
 | `app/posts/` | Posts JSON API under `/api/posts`, photo handling, category guess |
-| `app/pages/` | The HTML page shells for posts |
+| `app/posts/pages.py`, `app/profiles/pages.py` | Post and profile HTML pages |
+| `app/claims/`, `app/messages/`, `app/notifications/` | Private claims, messages, and notifications |
 | `app/photo_pipeline/` | Validate an upload, strip EXIF and GPS, re-encode as JPEG |
 | `app/storage.py` | S3 upload, presigned viewing URLs, delete |
 | `app/model.py` | Category guess from a photo |
 | `app/static/`, `app/templates/` | All styling, front-end behavior, and layout |
 | `migrations/` | Alembic migration history |
 | `tests/` | pytest suite and fixtures |
-| `documents/` | Architecture, sprint plan, requirements, model results |
+| `documents/` | Architecture, sprint plans, requirements, meeting logs, and hour log |
 | `cnn.py`, `data_pipeline.py`, `ensemble.py` | Model training, the dataset split, and checkpoint ensembling |
 | `render.yaml`, `deploy/` | Hosting blueprint and the S3 IAM policy |
+
+## Admin commands
+
+Admin rights are managed from the terminal:
+
+```sh
+python -m flask --app run make-admin you@example.com
+python -m flask --app run remove-admin you@example.com
+python -m flask --app run close-old-posts
+```
+
+## Hosting
+
+The hosted site URL is TBD. `render.yaml` contains the deployment settings.
+
+## Sprint checkpoint
+
+The Sprint 2 checkpoint passes 264 automated tests. Some acceptance criteria
+remain unfinished; see the checkpoint status in
+[the Sprint 2 requirements](documents/sprint-2-requirements.md).
+[Sprint 3 requirements](documents/sprint-3-requirements.md) and the latest
+[hour log](documents/hour-log.md) are also preserved in `documents/`.
