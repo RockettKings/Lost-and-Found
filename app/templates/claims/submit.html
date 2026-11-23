@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Claim item · Lost and Found{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Claim {{ item.title }}</h1>
+  <p>Your answers and additional details are visible only to you and the poster.</p>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    {% for question, field in answer_fields %}
+      <div class="field">
+        <label for="{{ field.id }}">{{ question }}</label>
+        {{ field(maxlength=1000, required=true) }}
+        {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+      </div>
+    {% endfor %}
+    {% for error in form.answers.errors if error is string %}<p class="error">{{ error }}</p>{% endfor %}
+    <div class="field">
+      {{ form.supporting_details.label }} {{ form.supporting_details(maxlength=2000) }}
+      {% for error in form.supporting_details.errors %}<small class="error">{{ error }}</small>{% endfor %}
+    </div>
+    <button class="button" type="submit">Submit claim</button>
+  </form>
+  <p><a href="{{ url_for('post_pages.detail', post_id=item.id) }}">Back to item</a></p>
+</div>
+{% endblock %}

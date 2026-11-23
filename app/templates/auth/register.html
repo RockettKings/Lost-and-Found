@@ -5,6 +5,8 @@
   <form class="card narrow" method="post" novalidate>
     <h1>Create an account</h1>
     {{ form.hidden_tag() }}
+    {{ field(form.username, autocomplete="username", minlength=3, maxlength=20, pattern="[A-Za-z0-9_]+", required=true) }}
+    <p class="muted hint">Shown publicly on your posts. 3–20 letters, numbers, or underscores.</p>
     {{ field(form.email, autocomplete="email", required=true) }}
     {{ field(form.password, autocomplete="new-password", minlength=10, maxlength=128, required=true) }}
     {{ field(form.confirm, autocomplete="new-password", required=true) }}

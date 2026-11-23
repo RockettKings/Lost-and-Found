@@ -307,3 +307,25 @@ The team, schedule, and load per person are in [Sprint Plan](sprint-plan.md).
 - All tests pass on the separate test database.
 
 **How tested:** this requirement is the tests. It is done when `pytest` passes in a clean checkout. It runs last in Sprint 2.
+
+
+## Integration checkpoint — November 22, 2026
+
+The integrated Sprint 2 code passes all 264 automated tests after updating two
+page-test assertions for the paginated posts API. A passing suite does not mean
+all acceptance criteria above are complete. Remaining work identified in the
+code review:
+
+| Req | Owner | Remaining work |
+| --- | --- | --- |
+| 5 | Jaycob | Supply experiment logs, validation confusion matrix, and test-accuracy evidence; verify predictions on the required held-out photos. Training/inference code and the served checkpoint are present, and the checkpoint-load test passes. |
+| 18 | Khang | Group the inbox by other user and item, order conversations by newest message, and show each conversation's full history oldest first. |
+| 26, 27 | Khang | Implement post/user reporting forms, persistence, authorization, and tests. The reports route is currently a placeholder. |
+| 29 | Nick | Add the global request limit and configurable limit values. Selected routes already have tested limits. |
+| 31 | Jonathan | Perform the real hosted upload/redeploy persistence check. Cloud storage code passes mocked tests; no real cloud verification was performed for this checkpoint. |
+| 42 | Lydia | The two outdated pagination assertions are fixed; the full suite now passes. Add coverage with the remaining features as they are implemented. |
+| 46 | Nick | Check inactivity (no claims/messages), archive closed/resolved posts, and exclude them from browse/search while preserving owner history. Current expiry only marks posts older than 60 days resolved. |
+
+Claims requirements 32 and 33 are implemented and pass their tests. This section
+records checkpoint findings; it does not change the acceptance criteria or the
+team's recorded hours.

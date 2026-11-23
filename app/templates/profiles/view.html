@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Profile · Lost and Found{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='profiles.js') }}" defer></script>{% endblock %}
+{% block content %}
+<section id="profile" data-user-id="{{ user_id }}">
+  <div class="card">
+    <p id="profile-status" class="status-message" role="status" aria-live="polite">Loading profile…</p>
+    <div id="profile-summary"></div>
+    {% if email %}<p class="meta">Email (only you can see this): {{ email }}</p>{% endif %}
+    <div class="actions">
+      {% if email %}
+        <a class="button secondary" href="{{ url_for('profile_pages.edit') }}">Edit bio</a>
+        <a class="button secondary" href="{{ url_for('auth.change_username') }}">Change username</a>
+        <a class="button secondary" href="{{ url_for('profile_pages.history') }}">Resolved posts</a>
+      {% elif current_user.is_authenticated %}
+        <a class="button" href="{{ url_for('messages.compose', to=user_id) }}">Send a message</a>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Log in to send a message</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2>Posts</h2>
+  <ul id="profile-posts" class="posts"></ul>
+  <nav id="profile-pages" class="actions"></nav>
+</section>
+{% endblock %}

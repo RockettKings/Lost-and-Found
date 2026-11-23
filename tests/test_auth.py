@@ -13,16 +13,20 @@ from tests.conftest import MIGRATIONS
 GOOD_PASSWORD = "correct horse battery"
 
 
-def register(client, email="student@example.edu", password=GOOD_PASSWORD, confirm=None):
+def register(client, email="student@example.edu", password=GOOD_PASSWORD, confirm=None,
+             username=None):
+    # Default username is the email's local part, so different emails get different names.
+    if username is None:
+        username = re.sub(r"[^A-Za-z0-9_]", "_", email.strip().split("@")[0])[:20]
     return client.post("/auth/register", data={
-        "email": email, "password": password,
+        "username": username, "email": email, "password": password,
         "confirm": password if confirm is None else confirm,
     })
 
 
 def login(client, email="student@example.edu", password=GOOD_PASSWORD, next_url=None):
     url = "/auth/login" + (f"?next={next_url}" if next_url else "")
-    return client.post(url, data={"email": email, "password": password})
+    return client.post(url, data={"identifier": email, "password": password})
 
 
 def test_register_stores_hash_not_password(client, app):
@@ -39,7 +43,7 @@ def test_register_stores_hash_not_password(client, app):
 def test_register_logs_user_in(client):
     register(client)
     home = client.get("/").data
-    assert b">Account</span>" in home
+    assert b'class="nav-user"' in home
     assert b"student@example.edu" not in home
 
 
@@ -70,20 +74,20 @@ def test_duplicate_registration_is_rejected(client, app):
 def test_login_and_logout(client):
     register(client)
     client.post("/auth/logout")
-    assert b"Log in" in client.get("/").data
+    assert b"Log in" in client.get("/", follow_redirects=True).data
 
     response = login(client)
     assert response.status_code == 302
-    assert b">Account</span>" in client.get("/").data
+    assert b'class="nav-user"' in client.get("/").data
 
     client.post("/auth/logout")
-    assert b">Account</span>" not in client.get("/").data
+    assert b'class="nav-user"' not in client.get("/").data
 
 
 def test_logout_requires_post(client):
     register(client)
     assert client.get("/auth/logout").status_code == 405
-    assert b">Account</span>" in client.get("/").data
+    assert b'class="nav-user"' in client.get("/").data
 
 
 def test_wrong_email_and_wrong_password_look_identical(client):
@@ -92,9 +96,9 @@ def test_wrong_email_and_wrong_password_look_identical(client):
     wrong_password = login(client, password="wrong password!!")
     wrong_email = login(client, email="nobody@example.edu")
     assert wrong_password.status_code == wrong_email.status_code == 200
-    assert b"Invalid email or password." in wrong_password.data
-    assert b"Invalid email or password." in wrong_email.data
-    assert b">Account</span>" not in client.get("/").data
+    assert b"Invalid email, username, or password." in wrong_password.data
+    assert b"Invalid email, username, or password." in wrong_email.data
+    assert b'class="nav-user"' not in client.get("/").data
 
 
 @pytest.mark.parametrize("next_url,expected", [
@@ -134,7 +138,7 @@ def test_csrf_is_enforced(tmp_path):
     page = client.get("/auth/register").data.decode()
     token = re.search(r'name="csrf_token" type="hidden" value="([^"]+)"', page).group(1)
     response = client.post("/auth/register", data={
-        "csrf_token": token, "email": "student@example.edu",
+        "csrf_token": token, "username": "student", "email": "student@example.edu",
         "password": GOOD_PASSWORD, "confirm": GOOD_PASSWORD,
     })
     assert response.status_code == 302

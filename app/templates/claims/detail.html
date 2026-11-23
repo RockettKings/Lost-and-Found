@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Claim · Lost and Found{% endblock %}
+{% block content %}
+<h1>Claim #{{ claim.id }}</h1>
+<p>Item: <a href="{{ url_for('post_pages.detail', post_id=claim.item_id) }}">{{ claim.item.title }}</a></p>
+<p>Submitted by {{ claim.claimant.public_name }}.</p>
+<p>Status: <strong>{{ claim.status|capitalize }}</strong></p>
+<dl>
+  {% for entry in claim.ownership_answers %}<dt>{{ entry.question }}</dt><dd>{{ entry.answer }}</dd>{% endfor %}
+</dl>
+{% if claim.supporting_details %}<p>{{ claim.supporting_details }}</p>{% endif %}
+{% if is_poster and claim.status == 'pending' %}
+  <form method="post" action="{{ url_for('claims.review', claim_id=claim.id) }}">
+    {{ form.hidden_tag() }}
+    {% if can_approve %}<button class="button" type="submit" name="decision" value="approved">Approve</button>{% endif %}
+    <button class="button secondary" type="submit" name="decision" value="denied">Deny</button>
+  </form>
+{% endif %}
+{% endblock %}

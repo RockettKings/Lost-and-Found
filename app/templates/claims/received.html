@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Review claims · Lost and Found{% endblock %}
+{% block content %}
+<h1>Claims for {{ item.title }}</h1>
+<p><a href="{{ url_for('post_pages.detail', post_id=item.id) }}">Back to item</a></p>
+{% for claim in pagination.items %}
+  <article class="card">
+    <h2>Claim #{{ claim.id }} — {{ claim.claimant.display_name or ('User #' ~ claim.claimant_id) }}</h2>
+    <p>Status: <strong>{{ claim.status|capitalize }}</strong> · {{ claim.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    <dl>
+      {% for entry in claim.ownership_answers %}<dt>{{ entry.question }}</dt><dd>{{ entry.answer }}</dd>{% endfor %}
+    </dl>
+    {% if claim.supporting_details %}<p>{{ claim.supporting_details }}</p>{% endif %}
+    {% if claim.status == 'pending' %}
+      <form method="post" action="{{ url_for('claims.review', claim_id=claim.id) }}">
+        {{ form.hidden_tag() }}
+        {% if can_approve %}<button class="button" type="submit" name="decision" value="approved">Approve</button>{% endif %}
+        <button class="button secondary" type="submit" name="decision" value="denied">Deny</button>
+      </form>
+    {% endif %}
+  </article>
+{% else %}<p>No claims have been submitted.</p>{% endfor %}
+{% if pagination.has_prev %}<a href="{{ url_for('claims.received', item_id=item.id, page=pagination.prev_num) }}">Previous</a>{% endif %}
+{% if pagination.has_next %}<a href="{{ url_for('claims.received', item_id=item.id, page=pagination.next_num) }}">Next</a>{% endif %}
+{% endblock %}

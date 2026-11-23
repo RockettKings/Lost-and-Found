@@ -18,6 +18,14 @@ def _account(client, app, email="student@example.edu"):
         return db.session.execute(db.select(User).filter_by(email=email)).scalar_one().id
 
 
+def _view_as_another_user(client, app, email="viewer@example.edu"):
+    # The login wall hides every page from signed-out visitors, so check privacy
+    # from a different signed-in account instead.
+    client.post("/auth/logout")
+    if login(client, email=email).status_code != 302:
+        _account(client, app, email=email)
+
+
 def _item(test_db, user_id, **overrides):
     fields = {
         "title": "Blue backpack", "description": "Lost near the library",
@@ -33,7 +41,8 @@ def _item(test_db, user_id, **overrides):
 
 def _form(title="Lost wallet", **overrides):
     data = {
-        "title": title, "description": "Black leather wallet", "category": "Accessories",
+        # Mixed case on purpose: Req 11 lowercases before checking the 5a list.
+        "title": title, "description": "Black leather wallet", "category": "Wallet",
         "listing_type": "lost", "general_location": "Cafeteria", "date_reported": "2026-11-08",
     }
     data.update(overrides)
@@ -41,6 +50,7 @@ def _form(title="Lost wallet", **overrides):
 
 
 def test_home_loads_assets_and_listing_data(client, app, test_db):
+    _view_as_another_user(client, app)
     page = client.get("/")
     assert page.status_code == 200
     assert b'id="post-list"' in page.data
@@ -50,10 +60,19 @@ def test_home_loads_assets_and_listing_data(client, app, test_db):
     assert "/static/posts.js" in assets
     for asset in assets:
         assert client.get(asset).status_code == 200
-    assert client.get("/api/posts/").json == {"posts": []}
+    listing = client.get("/api/posts/")
+    assert listing.status_code == 200
+    assert listing.json == {
+        "posts": [],
+        "pagination": {
+            "page": 1, "per_page": 10, "total": 0, "pages": 0,
+            "has_next": False, "has_prev": False,
+        },
+    }
 
-    user_id = _account(client, app)
     client.post("/auth/logout")
+    user_id = _account(client, app)
+    _view_as_another_user(client, app)
     first = _item(test_db, user_id, date_reported=date(2026, 1, 1))
     second = _item(test_db, user_id, title="Silver laptop", listing_type="found",
                    category="electronics", date_reported=date(2026, 6, 1))
@@ -69,7 +88,7 @@ def test_home_loads_assets_and_listing_data(client, app, test_db):
 
 def test_search_filter_and_sort(client, app, test_db):
     user_id = _account(client, app)
-    client.post("/auth/logout")
+    _view_as_another_user(client, app)
     _item(test_db, user_id, date_reported=date(2026, 1, 1))
     _item(test_db, user_id, title="Silver laptop", description="Found in the lab",
           category="electronics", listing_type="found", date_reported=date(2026, 6, 1))
@@ -91,9 +110,9 @@ def test_search_filter_and_sort(client, app, test_db):
 
 def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, monkeypatch):
     user_id = _account(client, app)
-    client.post("/auth/logout")
+    _view_as_another_user(client, app)
     item = _item(test_db, user_id, photo_key="items/" + "ab" * 16 + ".jpg")
-    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/backpack.jpg")
+    monkeypatch.setattr("app.serializers.get_photo", lambda key: "https://photos.example/backpack.jpg")
 
     page = client.get(f"/posts/{item.id}")
     assert page.status_code == 200
@@ -110,7 +129,9 @@ def test_detail_page_and_api_keep_private_fields_hidden(client, app, test_db, mo
     assert post["resolved"] is False
     assert post["photo_url"] == "https://photos.example/backpack.jpg"
     assert post["is_owner"] is False
-    assert "email" not in post and "password_hash" not in post and "user_id" not in post
+    assert "email" not in post and "password_hash" not in post
+    # The poster's id is public: it links the post to their profile page.
+    assert post["user_id"] == user_id
     assert b"student@example.edu" not in page.data + api.data
 
     missing = client.get("/posts/9999")
@@ -172,7 +193,15 @@ def test_owner_can_edit_and_delete_and_others_cannot(client, app, test_db):
     login(client, email="owner@example.edu", password=GOOD_PASSWORD)
     assert client.delete(f"/api/posts/{item_id}").status_code == 204
     assert client.get(f"/posts/{item_id}").status_code == 404
-    assert client.get("/api/posts/").json == {"posts": []}
+    listing = client.get("/api/posts/")
+    assert listing.status_code == 200
+    assert listing.json == {
+        "posts": [],
+        "pagination": {
+            "page": 1, "per_page": 10, "total": 0, "pages": 0,
+            "has_next": False, "has_prev": False,
+        },
+    }
     test_db.session.expire_all()
     assert test_db.session.get(Item, item_id) is None
 
@@ -204,7 +233,7 @@ def test_non_image_is_rejected_and_photo_is_processed_before_storage(client, app
 
     # Fake only cloud storage; run the real image validation/metadata pipeline.
     monkeypatch.setattr("app.posts.photos.save_photo", save_processed_photo)
-    monkeypatch.setattr("app.posts.routes.photo_url", lambda key: "https://photos.example/photo.jpg")
+    monkeypatch.setattr("app.serializers.get_photo", lambda key: "https://photos.example/photo.jpg")
     rejected = client.post("/api/posts/", data={
         **_form(title="Text file"), "photo": (BytesIO(b"not a picture"), "fake.jpg"),
     })

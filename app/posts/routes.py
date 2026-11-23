@@ -2,13 +2,15 @@ from datetime import date
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.posts.photos import remove_stored_photo, store_uploaded_photo
-from app.models import Item
-from app.storage import photo_url
+from app.models import Claim, Item
+from app.serializers import serialize_item
+from app.categories import CATEGORIES
+from app.pagination import DEFAULT_PER_PAGE, MAX_PER_PAGE, positive_int
 
 posts_bp = Blueprint("posts", __name__, url_prefix="/api/posts")
 
@@ -22,6 +24,7 @@ TEXT_LIMITS = {
 CREATE_REQUIRED = set(TEXT_LIMITS)
 ALLOWED_UPDATE_FIELDS = CREATE_REQUIRED | {"date_reported", "resolved"}
 
+## HELPER FUNCTIONS
 
 def _discard_photo(photo_key):
     if not photo_key:
@@ -32,33 +35,8 @@ def _discard_photo(photo_key):
         # A failed S3 cleanup should not undo a committed database operation.
         current_app.logger.exception("Could not delete an obsolete post photo.")
 
-
-def _photo_url(item):
-    if not item.photo_key:
-        return None
-    try:
-        return photo_url(item.photo_key)
-    except Exception:
-        current_app.logger.exception("Could not generate a post photo URL.")
-        return None
-
-
-def _item_to_dict(item):
-    """Serialize a post without exposing private user information."""
-    return {
-        "id": item.id,
-        "title": item.title,
-        "description": item.description,
-        "category": item.category,
-        "listing_type": item.listing_type,
-        "general_location": item.general_location,
-        "date_reported": item.date_reported.isoformat(),
-        "created_at": item.created_at.isoformat() + "Z",
-        "resolved": bool(item.resolved),
-        "photo_url": _photo_url(item),
-        "is_owner": bool(current_user.is_authenticated and item.user_id == current_user.id),
-    }
-
+def _is_admin():
+    return bool(current_user.is_authenticated and current_user.is_admin)
 
 def _parse_bool(value, field):
     if isinstance(value, bool):
@@ -70,7 +48,6 @@ def _parse_bool(value, field):
         if normalized in {"false", "0", "no", "off"}:
             return False
     raise ValueError(f"{field} must be true or false.")
-
 
 def _request_data():
     """Read either a JSON object or multipart/form-data fields."""
@@ -84,7 +61,6 @@ def _request_data():
         return request.form.to_dict(), {}
 
     return None, {"body": "Use application/json or multipart/form-data."}
-
 
 def _validate_item_data(data, partial=False, allow_empty=False):
     if not isinstance(data, dict):
@@ -127,6 +103,12 @@ def _validate_item_data(data, partial=False, allow_empty=False):
             errors["listing_type"] = "Must be either 'lost' or 'found'."
             cleaned.pop("listing_type", None)
 
+    if "category" in cleaned:
+        cleaned["category"] = cleaned["category"].lower()
+        if cleaned["category"] not in CATEGORIES:
+            errors["category"] = "Choose a category from the list."
+            cleaned.pop("category", None)
+
     if "date_reported" in data:
         raw_date = data["date_reported"]
         if not isinstance(raw_date, str):
@@ -145,7 +127,6 @@ def _validate_item_data(data, partial=False, allow_empty=False):
 
     return cleaned, errors
 
-
 def _commit():
     try:
         db.session.commit()
@@ -159,29 +140,44 @@ def _commit():
         current_app.logger.exception("Post database error.")
         return False
 
-
 def _require_login():
     if not current_user.is_authenticated:
         return jsonify(error="Authentication required."), 401
     return None
 
-
-def _owned_post(post_id):
+def _owned_post(post_id, allow_admin=False):
     item = db.session.get(Item, post_id)
     if item is None:
         return None, (jsonify(error="Post not found."), 404)
+    if allow_admin and _is_admin():
+        return item, None
     if item.user_id != current_user.id:
         return None, (jsonify(error="You do not own this post."), 403)
     return item, None
 
+def _viewer_id():
+    return current_user.id if current_user.is_authenticated else None
+
+def _serialize(item):
+    return serialize_item(item, viewer_id=_viewer_id(), viewer_is_admin=_is_admin())
+
+## POSTS FUNCTIONS
 
 @posts_bp.get("/")
 def get_posts():
     """List posts. Supports q, category, listing_type, and sort query parameters."""
+
+    # Pagination
+    page = positive_int(request.args.get("page"), 1)
+    per_page = positive_int(request.args.get("per_page"), DEFAULT_PER_PAGE)
+    if page is None or per_page is None:
+        return jsonify(error="page and per_page must be positive integers."), 400
+    per_page = min(per_page, MAX_PER_PAGE)
+
     statement = db.select(Item)
 
     query = (request.args.get("q") or "").strip()
-    category = (request.args.get("category") or "").strip()
+    category = (request.args.get("category") or "").strip().lower()
     listing_type = (request.args.get("listing_type") or "").strip().lower()
     sort = (request.args.get("sort") or "newest").strip().lower()
 
@@ -199,26 +195,41 @@ def get_posts():
             Item.description.ilike(pattern, escape="\\"),
         ))
     if category:
-        statement = statement.where(Item.category == category)
+        # Case-insensitive so "bags", "Bags", and "BAGS" all match.
+        statement = statement.where(func.lower(Item.category) == category.lower())
     if listing_type:
         statement = statement.where(Item.listing_type == listing_type)
 
     order = Item.date_reported.desc() if sort == "newest" else Item.date_reported.asc()
-    statement = statement.order_by(order, Item.created_at.desc())
+    statement = statement.order_by(order, Item.created_at.desc(), Item.id.desc())
 
-    items = db.session.execute(statement).scalars().all()
-    return jsonify(posts=[_item_to_dict(item) for item in items]), 200
+    pagination = db.paginate(
+        statement,
+        page=page,
+        per_page=per_page,
+        max_per_page=MAX_PER_PAGE,
+        error_out=True
+    )
 
+    return jsonify(posts=[_serialize(item) for item in pagination.items],
+                   pagination={
+                       "page": pagination.page,
+                       "per_page": pagination.per_page,
+                       "total": pagination.total,
+                       "pages": pagination.pages,
+                       "has_next": pagination.has_next,
+                       "has_prev": pagination.has_prev
+                   }), 200
 
 @posts_bp.get("/<int:post_id>")
 def get_post(post_id):
     item = db.session.get(Item, post_id)
     if item is None:
         return jsonify(error="Post not found."), 404
-    return jsonify(post=_item_to_dict(item)), 200
-
+    return jsonify(post=_serialize(item)), 200
 
 @posts_bp.post("/")
+@limiter.limit("10 per minute;50 per hour")  # Stops spam posting.
 def create_post():
     auth_error = _require_login()
     if auth_error:
@@ -243,10 +254,10 @@ def create_post():
         _discard_photo(photo_key)
         return jsonify(error="Could not create the post."), 500
 
-    return jsonify(post=_item_to_dict(item)), 201
-
+    return jsonify(post=_serialize(item)), 201
 
 @posts_bp.patch("/<int:post_id>")
+@limiter.limit("30 per minute")
 def update_post(post_id):
     auth_error = _require_login()
     if auth_error:
@@ -283,6 +294,16 @@ def update_post(post_id):
         if photo_error:
             return jsonify(errors={"photo": photo_error}), 400
 
+    if cleaned.get("listing_type") == "lost":
+        # Claim submission also locks this row: the check cannot race a new claim.
+        result = db.session.execute(db.update(Item).where(
+            Item.id == item.id, ~db.exists().where(Claim.item_id == item.id),
+        ).values(listing_type="lost").execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            db.session.rollback()
+            _discard_photo(new_photo_key)
+            return jsonify(error="A found post with claims cannot be changed to lost."), 409
+
     previous_photo_key = item.photo_key
     for field, value in cleaned.items():
         setattr(item, field, value)
@@ -299,18 +320,21 @@ def update_post(post_id):
     if (new_photo_key or remove_photo) and previous_photo_key:
         _discard_photo(previous_photo_key)
 
-    return jsonify(post=_item_to_dict(item)), 200
-
+    return jsonify(post=_serialize(item)), 200
 
 @posts_bp.delete("/<int:post_id>")
+@limiter.limit("30 per minute")
 def delete_post(post_id):
     auth_error = _require_login()
     if auth_error:
         return auth_error
 
-    item, error_response = _owned_post(post_id)
+    item, error_response = _owned_post(post_id, allow_admin=True)
     if error_response:
         return error_response
+
+    if item.user_id != current_user.id:
+        current_app.logger.info("Admin user %s deleted post %s.", current_user.id, item.id)
 
     photo_key = item.photo_key
     db.session.delete(item)

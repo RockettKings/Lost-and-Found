@@ -4,4 +4,19 @@
   <section id="post-detail" data-post-id="{{ post_id }}">
     <p class="status-message" role="status" aria-live="polite">Loading post…</p>
   </section>
+  {% if current_user.is_authenticated and current_user.id != item.user_id %}
+    <a class="button" href="{{ url_for('messages.compose', item_id=item.id) }}">Message the poster</a>
+  {% endif %}
+  {% if item.listing_type == "found" %}
+    <div class="card actions">
+      {% if current_user.is_authenticated and current_user.id == item.user_id %}
+        <a href="{{ url_for('claims.questions', item_id=item.id) }}">Ownership questions</a>
+        <a href="{{ url_for('claims.received', item_id=item.id) }}">Review claims</a>
+      {% elif not item.resolved and item.ownership_questions %}
+        <a class="button" href="{{ url_for('claims.submit', item_id=item.id) }}">Claim this item</a>
+      {% elif not item.resolved %}
+        <p>The poster has not added ownership questions yet.</p>
+      {% endif %}
+    </div>
+  {% endif %}
 {% endblock %}

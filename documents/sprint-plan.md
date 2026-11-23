@@ -103,4 +103,3 @@ We do the risky items first, and a checkpoint on Sun Nov 15 decides what ships.
 | Rate limit values | Nick | Before Req 29a |
 | Cutoff age for closing old posts | Nick | Before Req 46 |
 | Minimum test accuracy and the fallback confidence threshold | Jaycob | Checkpoint, Sun Nov 15 |
-

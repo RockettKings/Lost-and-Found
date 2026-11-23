@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Edit profile · Lost and Found{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='profiles.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Edit bio</h1>
+  <p class="meta">Other users see your username, <strong>@{{ user.display_name }}</strong>, instead of your email.
+    <a href="{{ url_for('auth.change_username') }}">Change username</a></p>
+  <form id="profile-form" novalidate>
+    <div class="field">
+      <label for="bio">Bio (optional)</label>
+      <textarea id="bio" name="bio" maxlength="500" rows="4">{{ user.bio or '' }}</textarea>
+      <small class="field-error" data-error-for="bio"></small>
+    </div>
+    <p id="profile-form-status" class="status-message" role="status" aria-live="polite"></p>
+    <div class="actions">
+      <button class="button" type="submit">Save</button>
+      <a href="{{ url_for('profile_pages.mine') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
