@@ -60,7 +60,15 @@ def test_home_loads_assets_and_listing_data(client, app, test_db):
     assert "/static/posts.js" in assets
     for asset in assets:
         assert client.get(asset).status_code == 200
-    assert client.get("/api/posts/").json == {"posts": []}
+    listing = client.get("/api/posts/")
+    assert listing.status_code == 200
+    assert listing.json == {
+        "posts": [],
+        "pagination": {
+            "page": 1, "per_page": 10, "total": 0, "pages": 0,
+            "has_next": False, "has_prev": False,
+        },
+    }
 
     client.post("/auth/logout")
     user_id = _account(client, app)
@@ -185,7 +193,15 @@ def test_owner_can_edit_and_delete_and_others_cannot(client, app, test_db):
     login(client, email="owner@example.edu", password=GOOD_PASSWORD)
     assert client.delete(f"/api/posts/{item_id}").status_code == 204
     assert client.get(f"/posts/{item_id}").status_code == 404
-    assert client.get("/api/posts/").json == {"posts": []}
+    listing = client.get("/api/posts/")
+    assert listing.status_code == 200
+    assert listing.json == {
+        "posts": [],
+        "pagination": {
+            "page": 1, "per_page": 10, "total": 0, "pages": 0,
+            "has_next": False, "has_prev": False,
+        },
+    }
     test_db.session.expire_all()
     assert test_db.session.get(Item, item_id) is None
 
